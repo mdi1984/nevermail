@@ -193,7 +193,11 @@ dotnet run --project Nevermail/Nevermail.csproj   # http://localhost:5110
 dotnet test Nevermail.slnx
 ```
 
-Releases are cut by pushing a `vX.Y.Z` tag. CI then publishes the multi-arch image (`mdi1984/nevermail:vX.Y.Z`) and, once the image exists, `Nevermail.Aspire.Hosting` `X.Y.Z` with that image tag as its default. Publishing to NuGet needs a `NUGET_API_KEY` repository secret.
+Releases are cut by pushing a `vX.Y.Z` tag. CI then publishes the multi-arch image (`mdi1984/nevermail:vX.Y.Z`) and, once the image exists, `Nevermail.Aspire.Hosting` `X.Y.Z` with that image tag as its default. NuGet publishing uses [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing), so no API key is stored. It needs a policy on nuget.org for this repository and `docker-publish.yml`, plus the nuget.org profile name in the `NUGET_USER` secret.
+
+## License
+
+[MIT](LICENSE)
 
 Reflection is disabled in the AOT build, so every serialized type must be registered in a source-generated `JsonSerializerContext`. Unit tests run on the JIT and can't catch a missing registration, so CI also runs `scripts/smoke-test.sh` against the built image:
 

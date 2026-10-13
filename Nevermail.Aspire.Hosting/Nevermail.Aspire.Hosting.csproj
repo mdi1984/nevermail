@@ -13,6 +13,7 @@
     <RepositoryUrl>https://github.com/mdi1984/sendgrid-mock</RepositoryUrl>
     <PackageProjectUrl>https://github.com/mdi1984/sendgrid-mock</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
     <!-- Image tag the integration uses by default. Release builds pass the git tag, e.g. -p:NevermailImageTag=v1.2.0 -->
     <NevermailImageTag Condition="'$(NevermailImageTag)' == ''">latest</NevermailImageTag>

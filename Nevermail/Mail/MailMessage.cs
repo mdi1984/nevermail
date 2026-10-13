@@ -42,8 +42,11 @@ public sealed class MailAttachment
     public string? ContentId { get; set; }
     public bool Inline { get; set; }
 
-    /// <summary>Base64 encoded content.</summary>
+    /// <summary>Base64 encoded content. Empty for attachments referenced by <see cref="Url"/>.</summary>
     public string Content { get; set; } = "";
+
+    /// <summary>Remote location for providers that fetch attachments themselves (e.g. Brevo). Never fetched by Nevermail.</summary>
+    public string? Url { get; set; }
 
     public int Size => Content.Length / 4 * 3 - (Content.EndsWith("==") ? 2 : Content.EndsWith('=') ? 1 : 0);
 }

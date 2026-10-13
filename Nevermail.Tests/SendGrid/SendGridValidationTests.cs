@@ -189,6 +189,6 @@ public sealed class SendGridValidationTests : IDisposable
     [InlineData("$", null)]
     public void JsonPath_IsConvertedToSendGridField(string path, string? expected)
     {
-        Assert.Equal(expected, Providers.SendGrid.SendGridEndpoints.ToFieldPath(path));
+        Assert.Equal(expected, Providers.ProviderHelpers.ToFieldPath(path));
     }
 }

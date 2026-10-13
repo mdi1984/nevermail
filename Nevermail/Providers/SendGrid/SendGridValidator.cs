@@ -190,7 +190,7 @@ public static class SendGridValidator
             {
                 errors.Add(new("The attachment content is required.", $"attachments.{i}.content"));
             }
-            else if (!IsBase64(a.Content))
+            else if (!ProviderHelpers.IsBase64(a.Content))
             {
                 errors.Add(new("The attachment content must be base64 encoded.", $"attachments.{i}.content"));
             }
@@ -211,11 +211,5 @@ public static class SendGridValidator
         {
             errors.Add(new("The send_at parameter must be a unix timestamp, at most 72 hours in the future.", field));
         }
-    }
-
-    private static bool IsBase64(string value)
-    {
-        var buffer = new byte[value.Length];
-        return Convert.TryFromBase64String(value, buffer, out _);
     }
 }

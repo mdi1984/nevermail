@@ -26,6 +26,11 @@ public static class MailApi
                 return Results.NotFound();
             }
             var attachment = mail.Message.Attachments[index];
+            if (attachment.Url is { } url && attachment.Content.Length == 0)
+            {
+                // Remote attachment (Brevo): Nevermail never fetches it, the browser may.
+                return Results.Redirect(url);
+            }
             return Results.File(
                 Convert.FromBase64String(attachment.Content),
                 attachment.ContentType ?? "application/octet-stream",

@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Nevermail.Mail;
 using Nevermail.Storage;
@@ -44,8 +43,7 @@ public static class SendGridEndpoints
             return unauthorized;
         }
 
-        using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
-        var raw = await reader.ReadToEndAsync(ctx.RequestAborted);
+        var raw = await ProviderHelpers.ReadBodyAsync(ctx);
 
         SendGridRequest? request;
         try
@@ -106,35 +104,10 @@ public static class SendGridEndpoints
 
     private static SendGridError ToSendGridError(JsonException ex)
     {
-        var field = ToFieldPath(ex.Path);
+        var field = ProviderHelpers.ToFieldPath(ex.Path);
         // Type mismatches carry a path to the offending property; syntax errors usually don't.
-        return ex.Message.StartsWith("The JSON value could not be converted", StringComparison.Ordinal) && field is not null
+        return ProviderHelpers.IsTypeMismatch(ex) && field is not null
             ? new SendGridError($"Invalid type for {field}.", field)
             : new SendGridError("Bad Request: the request body is not valid JSON.");
-    }
-
-    /// <summary>Converts a System.Text.Json path ("$.personalizations[0].to") to SendGrid's notation ("personalizations.0.to").</summary>
-    public static string? ToFieldPath(string? jsonPath)
-    {
-        if (string.IsNullOrEmpty(jsonPath) || jsonPath == "$")
-        {
-            return null;
-        }
-        var sb = new StringBuilder(jsonPath.Length);
-        foreach (var ch in jsonPath.AsSpan(jsonPath.StartsWith("$.") ? 2 : 1))
-        {
-            switch (ch)
-            {
-                case '[':
-                    sb.Append('.');
-                    break;
-                case ']' or '\'':
-                    break;
-                default:
-                    sb.Append(ch);
-                    break;
-            }
-        }
-        return sb.ToString().TrimStart('.');
     }
 }

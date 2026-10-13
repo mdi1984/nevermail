@@ -1,6 +1,6 @@
 # Nevermail.Aspire.Hosting
 
-[.NET Aspire](https://aspire.dev) hosting integration for [Nevermail](https://github.com/mdi1984/sendgrid-mock): a local mock for **SendGrid**, **Brevo**, **Mailchimp Transactional (Mandrill)** and **SMTP**. Every mail your app sends ends up in a web UI, and nothing leaves your machine.
+[.NET Aspire](https://aspire.dev) hosting integration for [Nevermail](https://github.com/mdi1984/nevermail): a local mock for **SendGrid**, **Brevo**, **Mailchimp Transactional (Mandrill)** and **SMTP**. Every mail your app sends ends up in a web UI, and nothing leaves your machine.
 
 ```csharp
 var mail = builder.AddNevermail("mail")

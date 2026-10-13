@@ -203,7 +203,7 @@ jobs:
           retention-days: 7
 
   # Uses nuget.org Trusted Publishing: no stored API key, the job trades its GitHub OIDC token for a
-  # one-hour key. Needs a policy on nuget.org (owner mdi1984, repo sendgrid-mock, workflow docker-publish.yml)
+  # one-hour key. Needs a policy on nuget.org (owner mdi1984, repo nevermail, workflow docker-publish.yml)
   # and the nuget.org profile name in the NUGET_USER secret.
   # https://learn.microsoft.com/nuget/nuget-org/trusted-publishing
   publish-nuget:

@@ -4,8 +4,8 @@ on:
   push:
     branches: [ "main" ]
     tags: [ 'v*.*.*' ]
+  # All PRs, including ones stacked on other feature branches. Nothing is pushed for PRs.
   pull_request:
-    branches: [ "main" ]
 
 env:
   # Use docker.io for Docker Hub if empty

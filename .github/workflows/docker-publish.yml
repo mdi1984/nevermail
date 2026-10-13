@@ -170,3 +170,53 @@ jobs:
         run: |
           digest=$(docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" --format '{{json .Manifest}}' | jq -r '.digest')
           echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${digest}
+
+  # The Aspire hosting package. Every run packs it; v* tags publish it, once the matching image exists.
+  pack:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Pack Nevermail.Aspire.Hosting
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            image_tag="$GITHUB_REF_NAME"
+          else
+            version="0.0.0-ci.${GITHUB_RUN_NUMBER}"
+            image_tag="latest"
+          fi
+          dotnet pack Nevermail.Aspire.Hosting -c Release -o artifacts -p:Version="$version" -p:NevermailImageTag="$image_tag"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget
+          path: artifacts/*.nupkg
+          retention-days: 7
+
+  publish-nuget:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [pack, merge]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget
+          path: artifacts
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Push to nuget.org
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

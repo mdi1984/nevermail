@@ -60,6 +60,23 @@ curl -i http://localhost:5110/v3/mail/send   -H 'Authorization: Bearer anything'
   }'
 ```
 
+### .NET Aspire
+
+```bash
+dotnet add package Nevermail.Aspire.Hosting
+```
+
+```csharp
+var mail = builder.AddNevermail("mail");
+
+builder.AddProject<Projects.Api>("api")
+    .WithReference(mail)                                            // ConnectionStrings__mail
+    .WithEnvironment("SendGrid__Host", mail.Resource.HttpEndpoint)  // or pass single endpoints
+    .WaitFor(mail);
+```
+
+The dashboard links to the inbox. Options include `WithDataVolume()`, `WithFaults(...)`, `WithSmtpCredentials(...)` and per-provider API keys; see the [package README](Nevermail.Aspire.Hosting/README.md). The package works with any Aspire 13.x.
+
 ### Persistence
 
 ```bash
@@ -175,6 +192,8 @@ Nothing is captured for failed API sends. For random failures across all sends, 
 dotnet run --project Nevermail/Nevermail.csproj   # http://localhost:5110
 dotnet test Nevermail.slnx
 ```
+
+Releases are cut by pushing a `vX.Y.Z` tag. CI then publishes the multi-arch image (`mdi1984/nevermail:vX.Y.Z`) and, once the image exists, `Nevermail.Aspire.Hosting` `X.Y.Z` with that image tag as its default. Publishing to NuGet needs a `NUGET_API_KEY` repository secret.
 
 Reflection is disabled in the AOT build, so every serialized type must be registered in a source-generated `JsonSerializerContext`. Unit tests run on the JIT and can't catch a missing registration, so CI also runs `scripts/smoke-test.sh` against the built image:
 

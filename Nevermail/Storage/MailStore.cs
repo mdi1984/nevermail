@@ -10,8 +10,14 @@ public sealed record MailQuery(
     string? RequestId = null,
     int? Limit = null);
 
+/// <summary>What changed in the store: "added", "deleted" (incl. evicted) or "cleared".</summary>
+public sealed record MailStoreChange(string Kind, IReadOnlyList<string> Ids);
+
 public interface IMailStore
 {
+    /// <summary>Raised after mails were added or removed. Handlers must be quick and must not throw.</summary>
+    event Action<MailStoreChange>? Changed;
+
     Task AddAsync(IReadOnlyList<StoredMail> mails);
     IReadOnlyList<StoredMail> Query(MailQuery query);
     StoredMail? Get(string id);
@@ -31,6 +37,8 @@ public sealed class MailStore : IMailStore
     private readonly string? _path;
     private readonly int _maxMessages;
     private readonly ILogger<MailStore> _logger;
+
+    public event Action<MailStoreChange>? Changed;
 
     public MailStore(string? path, int maxMessages, ILogger<MailStore> logger)
     {
@@ -73,6 +81,12 @@ public sealed class MailStore : IMailStore
             evicted = EvictOverflow();
         }
         DeleteFiles(evicted);
+
+        Raise("added", mails.Select(m => m.Id).Except(evicted.Select(m => m.Id)).ToList());
+        if (evicted.Count > 0)
+        {
+            Raise("deleted", evicted.Select(m => m.Id).Where(id => mails.All(m => m.Id != id)).ToList());
+        }
     }
 
     public IReadOnlyList<StoredMail> Query(MailQuery query)
@@ -124,6 +138,7 @@ public sealed class MailStore : IMailStore
             _mails.Remove(mail);
         }
         DeleteFiles([id]);
+        Raise("deleted", [id]);
         return true;
     }
 
@@ -137,6 +152,15 @@ public sealed class MailStore : IMailStore
             _byId.Clear();
         }
         DeleteFiles(ids);
+        Raise("cleared", []);
+    }
+
+    private void Raise(string kind, IReadOnlyList<string> ids)
+    {
+        if (ids.Count > 0 || kind == "cleared")
+        {
+            Changed?.Invoke(new MailStoreChange(kind, ids));
+        }
     }
 
     private void Load()

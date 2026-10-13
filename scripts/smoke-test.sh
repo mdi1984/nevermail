@@ -52,6 +52,14 @@ curl -sf "smtp://localhost:$SMTP_PORT" --mail-from smoke@example.com --mail-rcpt
 rm -f "/tmp/$NAME.eml"
 curl -sf "$BASE/api/mails?provider=smtp" | grep -q '"subject":"SMTP €"' || fail "smtp mail not stored or decoded"
 
+# UI support endpoints
+curl -sf "$BASE/api/info" | grep -q '"smtpPort":1025' || fail "info"
+EVENTS=$(curl -s -N --max-time 2 "$BASE/api/events" || true)
+echo "$EVENTS" | grep -q 'event: ready' || fail "event stream"
+SG_ID=$(curl -sf "$BASE/api/mails?provider=sendgrid" | grep -o '"id":"[A-Za-z0-9]*"' | head -1 | cut -d'"' -f4)
+curl -sf "$BASE/api/mails/$SG_ID/eml" | grep -q '^Subject: Smoke' || fail "eml export"
+curl -sfI "$BASE/app.js" | grep -qi 'cache-control: no-cache' || fail "static file caching headers"
+
 [ "$(status "$BASE/")" = "200" ] || fail "ui"
 [ "$(status -X DELETE "$BASE/api/mails")" = "204" ] || fail "clear"
 

@@ -9,4 +9,5 @@ namespace Nevermail;
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 [JsonSerializable(typeof(StoredMail))]
 [JsonSerializable(typeof(List<MailSummary>))]
+[JsonSerializable(typeof(Nevermail.Api.NevermailInfo))]
 public sealed partial class NevermailJsonContext : JsonSerializerContext;

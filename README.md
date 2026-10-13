@@ -13,7 +13,7 @@ It speaks the HTTP APIs of **SendGrid**, **Brevo** (formerly Sendinblue) and **M
 - **Realistic APIs**: each provider validates requests the way the real service does and answers with its own response and error format. A request that would fail in production fails here too.
 - **Delivery semantics**: SendGrid personalizations, Brevo message versions, and Mandrill's per-recipient sending each turn into the individual mails the provider would deliver, with merge tags filled in for the simple cases.
 - **SMTP server** like Mailpit: any client, AUTH PLAIN/LOGIN, MIME parsing including attachments, inline images and legacy charsets.
-- **Web UI** with the HTML, plain text and raw request of each mail, plus attachments and inline (`cid:`) images
+- **Web UI** with live updates, search and provider filters. Each mail shows its HTML preview (desktop/tablet/mobile widths), plain text, HTML source, headers, metadata and template data, and the raw request, plus attachments, inline (`cid:`) images and `.eml` download. Light and dark themes, keyboard navigation (`j`/`k`, `/`, `Del`), and it works on phones. Self-contained: no CDNs, works offline.
 - **Inspection API** for your own tests (see below)
 - **Persistence**: in memory, or one JSON file per mail so mails survive restarts
 
@@ -132,6 +132,9 @@ Useful for asserting on sent mails in integration tests.
 | `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider` (`sendgrid`, `brevo`, `mandrill`, `smtp`), `requestId` (e.g. SendGrid's `X-Message-Id`), `limit` |
 | `GET /api/mails/{id}` | Full mail including headers, attachments and the raw request |
 | `GET /api/mails/{id}/attachments/{index}` | Download an attachment |
+| `GET /api/mails/{id}/eml` | The mail as an `.eml` file (SMTP mails exactly as received) |
+| `GET /api/events` | Server-sent events (`added`, `deleted`, `cleared`) whenever mails change |
+| `GET /api/info` | Enabled providers and the SMTP port |
 | `DELETE /api/mails/{id}` | Delete one mail |
 | `DELETE /api/mails` | Delete all mails |
 | `GET /health` | Health check |

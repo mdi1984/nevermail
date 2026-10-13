@@ -26,23 +26,32 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
-app.UseFileServer();
+app.UseFileServer(new FileServerOptions
+{
+    // Revalidate on every load (cheap 304s via ETag) so a new image version never serves a stale UI.
+    StaticFileOptions = { OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache" },
+});
 
 app.MapGet("/health", () => "ok");
-app.MapMailApi();
 
+var providers = new List<string>();
 if (IsEnabled("Providers:SendGrid"))
 {
     app.MapSendGrid();
+    providers.Add(SendGridEndpoints.ProviderKey);
 }
 if (IsEnabled("Providers:Brevo"))
 {
     app.MapBrevo();
+    providers.Add(BrevoEndpoints.ProviderKey);
 }
 if (IsEnabled("Providers:Mandrill"))
 {
     app.MapMandrill();
+    providers.Add(MandrillEndpoints.ProviderKey);
 }
+
+app.MapMailApi(providers);
 
 app.Run();
 

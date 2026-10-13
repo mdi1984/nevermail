@@ -3,282 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <title>Nevermail</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.10/dayjs.min.js"></script>
-    <style>
-        [v-cloak] { display: none; }
-        .email-list-item.selected {
-            background-color: #e5e7eb;
-            border-left: 4px solid #3b82f6;
-        }
-        body { height: 100vh; overflow: hidden; }
-    </style>
-</head>
-<body class="bg-gray-100 font-sans text-gray-900">
-    <div id="app" v-cloak class="flex flex-col h-full">
-        <!-- Header -->
-        <header class="bg-white shadow-sm z-10 p-4 flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                <svg class="w-8 h-8 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-                </svg>
-                <h1 class="text-xl font-bold tracking-tight">Nevermail</h1>
-            </div>
-            <div class="flex gap-2">
-                <a href="https://github.com/mdi1984/sendgrid-mock" target="_blank" class="text-gray-500 hover:text-gray-900 transition flex items-center mr-2" title="View on GitHub">
-                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
-                </a>
-                <button @click="fetchMails" class="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm font-medium transition">
-                    Refresh
-                </button>
-                <button @click="clearMails" class="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm font-medium transition">
-                    Clear All
-                </button>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <div class="flex flex-1 overflow-hidden">
-            <!-- Sidebar / Email List -->
-            <div class="w-1/3 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
-                <div v-if="mails.length === 0" class="p-8 text-center text-gray-400">
-                    No emails found.
-                </div>
-                <div v-for="mail in mails" :key="mail.id"
-                     @click="selectMail(mail)"
-                     class="email-list-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition duration-150 ease-in-out"
-                     :class="{ 'selected': selectedMail && selectedMail.id === mail.id }">
-                    <div class="flex justify-between items-baseline mb-1">
-                        <span class="font-semibold truncate w-2/3" :title="formatAddress(mail.from)">
-                            {{ formatName(mail.from) }}
-                        </span>
-                        <span class="text-xs text-gray-500">{{ formatTime(mail.receivedAt) }}</span>
-                    </div>
-                    <div class="font-medium text-sm text-gray-800 mb-1 truncate">
-                        {{ mail.subject || '(No Subject)' }}
-                    </div>
-                    <div class="text-xs text-gray-500 truncate">
-                        <span class="uppercase tracking-wide text-gray-400 mr-1">{{ mail.provider }}</span>
-                        <span v-if="mail.sandbox" class="text-amber-600 mr-1">sandbox</span>
-                        To: {{ formatRecipients(mail) }}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Detail View -->
-            <div class="w-2/3 bg-gray-50 flex flex-col overflow-hidden relative">
-                <div v-if="!selectedMail" class="flex-1 flex flex-col items-center justify-center text-gray-400">
-                    <svg class="w-16 h-16 mb-4 opacity-20" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M2.94 6.412A2 2 0 002 8.108V16a2 2 0 002 2h12a2 2 0 002-2V8.108a2 2 0 00-.94-1.696l-6-3.75a2 2 0 00-2.12 0l-6 3.75zm2.615 2.423a1 1 0 10-1.11 1.664l5 3.333a1 1 0 001.11 0l5-3.333a1 1 0 00-1.11-1.664L10 11.798 5.555 8.835z" clip-rule="evenodd" />
-                    </svg>
-                    <p>Select an email to view details</p>
-                </div>
-
-                <div v-else class="flex flex-col h-full">
-                    <!-- Email Header -->
-                    <div class="bg-white p-6 shadow-sm border-b border-gray-200 shrink-0">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-4">{{ selectedMail.message.subject || '(No Subject)' }}</h2>
-
-                        <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                            <div class="text-gray-500 text-right">From:</div>
-                            <div class="font-medium">
-                                {{ formatAddress(selectedMail.message.from) }}
-                            </div>
-
-                            <template v-for="kind in addressKinds" :key="kind.key">
-                                <template v-if="selectedMail.message[kind.key].length">
-                                    <div class="text-gray-500 text-right">{{ kind.label }}:</div>
-                                    <div>
-                                        <span v-for="(addr, idx) in selectedMail.message[kind.key]" :key="idx"
-                                              class="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 rounded mr-1 mb-1 border border-blue-100">
-                                            {{ formatAddress(addr) }}
-                                        </span>
-                                    </div>
-                                </template>
-                            </template>
-
-                            <template v-if="selectedMail.message.templateId">
-                                <div class="text-gray-500 text-right">Template:</div>
-                                <div class="font-mono">{{ selectedMail.message.templateId }}</div>
-                            </template>
-
-
-                            <div class="text-gray-500 text-right">Date:</div>
-                            <div class="text-gray-700">
-                                {{ new Date(selectedMail.receivedAt).toLocaleString() }}
-                            </div>
-                        </div>
-
-                        <!-- Attachments Chips -->
-                        <div v-if="selectedMail.message.attachments && selectedMail.message.attachments.length" class="mt-4 pt-4 border-t border-gray-100">
-                            <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attachments</div>
-                            <div class="flex flex-wrap gap-2">
-                                <a v-for="(att, idx) in selectedMail.message.attachments" :key="idx"
-                                     :href="`/api/mails/${selectedMail.id}/attachments/${idx}`" download
-                                     class="flex items-center text-sm border bg-gray-50 px-3 py-1.5 rounded-full hover:bg-gray-100 cursor-pointer transition-colors"
-                                     title="Download attachment">
-                                    <svg class="w-4 h-4 mr-2 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clip-rule="evenodd"/>
-                                    </svg>
-                                    <span class="truncate max-w-xs">{{ att.filename }}</span>
-                                    <span class="ml-2 text-xs text-gray-400">({{ att.contentType }})</span>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Tabs -->
-                    <div class="bg-gray-100 border-b border-gray-200 px-6 flex">
-                        <button v-for="tab in availableTabs" :key="tab"
-                                @click="currentTab = tab"
-                                class="px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-150"
-                                :class="currentTab === tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                            {{ tab }}
-                        </button>
-                    </div>
-
-                    <!-- Tab Content -->
-                    <div class="flex-1 overflow-auto bg-white relative">
-                        <!-- HTML View -->
-                        <div v-if="currentTab === 'HTML' && htmlContent" class="h-full w-full">
-                            <iframe ref="mailFrame" class="w-full h-full border-0" :srcdoc="htmlContent" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
-                        </div>
-                        <div v-else-if="currentTab === 'HTML'" class="flex h-full items-center justify-center text-gray-400 italic">
-                            No HTML content
-                        </div>
-
-                        <!-- Text View -->
-                        <div v-if="currentTab === 'Text' && textContent" class="p-6 font-mono text-sm whitespace-pre-wrap text-gray-800">
-                            {{ textContent }}
-                        </div>
-                        <div v-else-if="currentTab === 'Text'" class="flex h-full items-center justify-center text-gray-400 italic">
-                            No plain text content
-                        </div>
-
-                        <!-- Raw request -->
-                        <div v-if="currentTab === 'Raw'" class="p-0 h-full">
-                            <pre class="p-4 text-xs font-mono bg-gray-50 h-full overflow-auto text-gray-700">{{ rawRequest }}</pre>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css">
     <script>
-        const { createApp, ref, computed, watch, onMounted } = Vue;
-
-        createApp({
-            setup() {
-                const mails = ref([]);
-                const selectedMail = ref(null);
-                const currentTab = ref('HTML');
-
-                const fetchMails = async () => {
-                    try {
-                        const res = await fetch('/api/mails');
-                        if (res.ok) mails.value = await res.json();
-                    } catch (e) {
-                        console.error("Failed to fetch mails", e);
-                    }
-                };
-
-                const clearMails = async () => {
-                    if (!confirm('Are you sure you want to delete all emails?')) return;
-                    await fetch('/api/mails', { method: 'DELETE' });
-                    selectedMail.value = null;
-                    await fetchMails();
-                };
-
-                const selectMail = async (summary) => {
-                    const res = await fetch(`/api/mails/${summary.id}`);
-                    if (!res.ok) return;
-                    selectedMail.value = await res.json();
-                    currentTab.value = selectedMail.value.message.html ? 'HTML' : 'Text';
-                };
-
-                const addressKinds = [
-                    { key: 'to', label: 'To' },
-                    { key: 'cc', label: 'Cc' },
-                    { key: 'bcc', label: 'Bcc' },
-                    { key: 'replyTo', label: 'Reply-To' },
-                ];
-
-                const formatName = (addr) => addr ? (addr.name || addr.email) : 'Unknown';
-
-                const formatAddress = (addr) => {
-                    if (!addr) return '';
-                    return addr.name ? `${addr.name} <${addr.email}>` : addr.email;
-                };
-
-                const formatTime = (isoString) => dayjs(isoString).format('MMM D, HH:mm');
-
-                const formatRecipients = (summary) => {
-                    if (!summary.to.length) return 'No recipients';
-                    const first = formatName(summary.to[0]);
-                    return summary.recipientCount > 1 ? `${first} +${summary.recipientCount - 1}` : first;
-                };
-
-                const htmlContent = computed(() => {
-                    if (!selectedMail.value) return null;
-                    const msg = selectedMail.value.message;
-                    let html = msg.html;
-                    if (!html) return null;
-
-                    // Point cid: references at the attachment download endpoint
-                    msg.attachments.forEach((att, idx) => {
-                        if (!att.contentId) return;
-                        const cid = att.contentId.replace(/^<|>$/g, '');
-                        const escaped = cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        html = html.replace(new RegExp(`cid:${escaped}\\b`, 'g'), `${location.origin}/api/mails/${selectedMail.value.id}/attachments/${idx}`);
-                    });
-                    // Inject <base target="_blank"> so links open in a new tab instead of inside the iframe
-                    if (/<head[\s>]/i.test(html)) {
-                        html = html.replace(/<head([^>]*)>/i, '<head$1><base target="_blank">');
-                    } else {
-                        html = '<base target="_blank">' + html;
-                    }
-                    return html;
-                });
-
-                const textContent = computed(() => selectedMail.value?.message.text);
-
-                const rawRequest = computed(() => {
-                    const raw = selectedMail.value?.rawRequest;
-                    if (!raw) return '';
-                    try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
-                });
-
-                const availableTabs = ['HTML', 'Text', 'Raw'];
-
-                onMounted(() => {
-                    fetchMails();
-                    // Poll every 5 seconds
-                    setInterval(fetchMails, 5000);
-                });
-
-                return {
-                    mails,
-                    selectedMail,
-                    currentTab,
-                    fetchMails,
-                    clearMails,
-                    selectMail,
-                    formatName,
-                    formatAddress,
-                    formatTime,
-                    formatRecipients,
-                    addressKinds,
-                    htmlContent,
-                    textContent,
-                    rawRequest,
-                    availableTabs
-                };
-            }
-        }).mount('#app');
+        // Apply the saved theme before first paint to avoid a flash.
+        try {
+            const theme = localStorage.getItem('nevermail.theme');
+            if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+        } catch { }
     </script>
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="#" title="Nevermail">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Zm2.1-.3 6.9 5.2 6.9-5.2a.9.9 0 0 0-.4-.1h-13a.9.9 0 0 0-.4.1ZM19 8.2l-6.4 4.8a1 1 0 0 1-1.2 0L5 8.2v9.3c0 .3.2.5.5.5h13c.3 0 .5-.2.5-.5V8.2Z"/><path d="m4 20 16-16" class="brand-strike"/></svg>
+            <span>Nevermail</span>
+        </a>
+        <div class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 0 1 5.2 10.4l4 4a1 1 0 0 1-1.4 1.4l-4-4A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"/></svg>
+            <input id="search" type="search" placeholder="Search subject, sender, recipient" autocomplete="off" aria-label="Search mails" title="Search (/)">
+        </div>
+        <select id="provider-filter" aria-label="Filter by provider">
+            <option value="">All providers</option>
+        </select>
+        <div class="topbar-actions">
+            <span id="live" class="live" title="Connecting…"><span class="live-dot"></span><span class="live-label">Live</span></span>
+            <button id="theme-toggle" class="icon-button" type="button" title="Theme: system" aria-label="Toggle theme">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 2v14a7 7 0 0 1 0-14Z"/></svg>
+            </button>
+            <button id="clear-all" class="button danger-subtle" type="button" title="Delete all mails">Delete all</button>
+            <a class="icon-button" href="https://github.com/mdi1984/sendgrid-mock" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12 2C6.5 2 2 6.5 2 12c0 4.4 2.9 8.2 6.8 9.5.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.6 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.6.6.7 1 1.6 1 2.7 0 3.8-2.3 4.7-4.6 4.9.4.3.7.9.7 1.9v2.7c0 .3.2.6.7.5A10 10 0 0 0 22 12c0-5.5-4.5-10-10-10Z"/></svg>
+            </a>
+        </div>
+    </header>
+
+    <main class="layout">
+        <aside class="list-pane" aria-label="Mails">
+            <div id="filter-bar" class="filter-bar" hidden></div>
+            <div id="list" class="mail-list" role="listbox" aria-label="Mail list" tabindex="0"></div>
+            <div id="list-footer" class="list-footer"></div>
+        </aside>
+        <section id="detail" class="detail-pane" aria-live="polite"></section>
+    </main>
+
+    <div id="toast" class="toast" role="status" hidden></div>
 </body>
 </html>

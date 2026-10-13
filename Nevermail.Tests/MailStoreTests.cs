@@ -66,6 +66,24 @@ public sealed class MailStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Changes_AreReported()
+    {
+        var store = Create(max: 2);
+        var changes = new List<MailStoreChange>();
+        store.Changed += changes.Add;
+        var (one, two, three) = (Mail("1"), Mail("2"), Mail("3"));
+
+        await store.AddAsync([one, two]);
+        await store.AddAsync([three]);
+        store.Delete(three.Id);
+        store.Clear();
+
+        Assert.Equal(
+            [$"added:{one.Id},{two.Id}", $"added:{three.Id}", $"deleted:{one.Id}", $"deleted:{three.Id}", "cleared:"],
+            changes.Select(c => $"{c.Kind}:{string.Join(',', c.Ids)}"));
+    }
+
+    [Fact]
     public async Task FileStore_SurvivesRestart()
     {
         var mail = Mail("persisted");

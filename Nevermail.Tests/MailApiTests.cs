@@ -105,6 +105,115 @@ public sealed class MailApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Info_ListsProvidersAndSmtpPort()
+    {
+        var info = await _factory.CreateClient().GetFromJsonAsync<JsonElement>("/api/info");
+
+        Assert.Equal(["sendgrid", "brevo", "mandrill"], info.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
+        Assert.Equal(_factory.SmtpPort, info.GetProperty("smtpPort").GetInt32());
+    }
+
+    [Fact]
+    public async Task Events_StreamStoreChanges()
+    {
+        var client = _factory.CreateClient();
+        using var response = await client.GetAsync("/api/events", HttpCompletionOption.ResponseHeadersRead);
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType!.MediaType);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+
+        async Task<(string Event, string Data)> NextEventAsync()
+        {
+            string? type = null, data = null;
+            while (await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5)) is { } line)
+            {
+                if (line.StartsWith("event: ")) type = line[7..];
+                else if (line.StartsWith("data: ")) data = line[6..];
+                else if (line.Length == 0 && type != null) return (type, data ?? "");
+            }
+            throw new EndOfStreamException();
+        }
+
+        Assert.Equal("ready", (await NextEventAsync()).Event);
+        var mail = await AddAsync("live");
+        Assert.Equal(("added", mail.Id), await NextEventAsync());
+        _factory.Store.Delete(mail.Id);
+        Assert.Equal(("deleted", mail.Id), await NextEventAsync());
+        _factory.Store.Clear();
+        Assert.Equal("cleared", (await NextEventAsync()).Event);
+    }
+
+    [Fact]
+    public async Task Eml_IsAValidMimeMessage()
+    {
+        var mail = await AddAsync("Export me");
+        mail.Message.Headers["X-Custom"] = "kept";
+        mail.Message.Attachments.Add(new MailAttachment { Filename = "logo.png", ContentType = "image/png", ContentId = "logo", Inline = true, Content = "aGVsbG8=" });
+
+        var response = await _factory.CreateClient().GetAsync($"/api/mails/{mail.Id}/eml");
+
+        Assert.Equal("message/rfc822", response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("Export me.eml", response.Content.Headers.ContentDisposition!.FileName?.Trim('"'));
+        var mime = await MimeKit.MimeMessage.LoadAsync(await response.Content.ReadAsStreamAsync());
+        Assert.Equal("Export me", mime.Subject);
+        Assert.Equal("to@example.com", Assert.Single(mime.To.Mailboxes).Address);
+        Assert.Equal("<b>hi</b>", mime.HtmlBody);
+        Assert.Equal("kept", mime.Headers["X-Custom"]);
+        Assert.Equal("sendgrid", mime.Headers["X-Nevermail-Provider"]);
+        Assert.Equal("hello.txt", Assert.Single(mime.Attachments).ContentDisposition.FileName);
+        Assert.Contains(mime.BodyParts, p => p.ContentId == "logo");
+    }
+
+    [Fact]
+    public async Task Eml_EncodesNonAsciiText()
+    {
+        var mail = new StoredMail
+        {
+            Provider = "brevo",
+            Message = new MailMessage
+            {
+                From = new MailAddress("joerg@example.com", "Jörg Müller"),
+                To = [new MailAddress("to@example.com", "Zoë")],
+                Subject = "Grüße ☕ – Bericht",
+                Text = "Hällo",
+                Attachments = [new MailAttachment { Filename = "Übersicht 2026.pdf", ContentType = "application/pdf", Content = "aGVsbG8=" }],
+            },
+        };
+        await _factory.Store.AddAsync([mail]);
+
+        var bytes = await _factory.CreateClient().GetByteArrayAsync($"/api/mails/{mail.Id}/eml");
+
+        Assert.All(bytes, b => Assert.True(b < 128, "headers and base64 bodies must be 7-bit"));
+        var mime = MimeKit.MimeMessage.Load(new MemoryStream(bytes));
+        Assert.Equal("Grüße ☕ – Bericht", mime.Subject);
+        Assert.Equal("Jörg Müller", Assert.Single(mime.From.Mailboxes).Name);
+        Assert.Equal("Zoë", Assert.Single(mime.To.Mailboxes).Name);
+        Assert.Equal("Hällo", mime.TextBody);
+        var attachment = (MimeKit.MimePart)Assert.Single(mime.Attachments);
+        Assert.Equal("Übersicht 2026.pdf", attachment.FileName);
+    }
+
+    [Fact]
+    public async Task Eml_ForSmtpMail_IsTheOriginalMessage()
+    {
+        const string raw = "Subject: original\r\nFrom: a@example.com\r\n\r\nbody\r\n";
+        var mail = new StoredMail { Provider = "smtp", RawRequest = raw, Message = new MailMessage { Subject = "original" } };
+        await _factory.Store.AddAsync([mail]);
+
+        var eml = await _factory.CreateClient().GetStringAsync($"/api/mails/{mail.Id}/eml");
+
+        Assert.Equal(raw, eml);
+    }
+
+    [Fact]
+    public async Task StaticFiles_AreRevalidated()
+    {
+        var response = await _factory.CreateClient().GetAsync("/app.js");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-cache", response.Headers.CacheControl!.ToString());
+    }
+
+    [Fact]
     public async Task Health_IsOk()
     {
         var response = await _factory.CreateClient().GetAsync("/health");

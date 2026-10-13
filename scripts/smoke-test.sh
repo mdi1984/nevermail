@@ -47,13 +47,7 @@ curl -sf -X POST "$BASE/api/1.3/users/ping" -d '{"key":"smoke"}' | grep -q 'PONG
 curl -sf "$BASE/api/mails?provider=mandrill" | grep -q '"subject":"Hi Bob"' || fail "mandrill merge vars"
 
 # SMTP (MimeKit parsing, legacy charsets)
-printf 'From: smoke@example.com
-To: to@example.com
-Subject: =?windows-1252?Q?SMTP_=80?=
-Content-Type: text/plain
-
-hello via smtp
-' > "/tmp/$NAME.eml"
+printf 'From: smoke@example.com\r\nTo: to@example.com\r\nSubject: =?windows-1252?Q?SMTP_=80?=\r\nContent-Type: text/plain\r\n\r\nhello via smtp\r\n' > "/tmp/$NAME.eml"
 curl -sf "smtp://localhost:$SMTP_PORT" --mail-from smoke@example.com --mail-rcpt to@example.com --upload-file "/tmp/$NAME.eml" || fail "smtp send"
 rm -f "/tmp/$NAME.eml"
 curl -sf "$BASE/api/mails?provider=smtp" | grep -q '"subject":"SMTP €"' || fail "smtp mail not stored or decoded"

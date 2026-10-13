@@ -7,6 +7,6 @@
 **/obj
 **/TestResults
 **/packages
-SendGridMock.Tests/
+Nevermail.Tests/
 Dockerfile
 README.md

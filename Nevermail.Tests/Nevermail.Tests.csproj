@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SendGridMock\SendGridMock.csproj" />
+    <ProjectReference Include="..\Nevermail\Nevermail.csproj" />
   </ItemGroup>
 
 </Project>

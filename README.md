@@ -1,88 +1,97 @@
-# SendGrid Mock API
+# Nevermail
 
-A simple, lightweight mock for the Twilio SendGrid API. This application provides a drop-in replacement for the SendGrid `v3/mail/send` endpoint, allowing you to test email sending in your applications without actually sending emails. It includes a web UI to view, search, and inspect the intercepted emails.
+*Your emails, never delivered.*
+
+Nevermail is a tiny local stand-in for transactional email APIs. Point your app at it instead of the real provider, and every mail it "sends" ends up in a web UI where you can inspect it. Nothing ever leaves your machine. It's built for local dev and integration tests, e.g. as a container in a .NET Aspire app host.
+
+The image is a NativeAOT binary on `scratch`, about 14 MB.
+
+> Formerly **SendGrid Mock** (`mdi1984/sendgrid-mock`). That image is frozen; use `mdi1984/nevermail`.
 
 ## Features
 
-- **SendGrid API Compatibility**: Mocks the `POST /v3/mail/send` endpoint.
-- **Web UI**: View sent emails, inspect headers, and preview HTML/Text content.
-- **Attachment Support**: Handles and allows downloading of email attachments.
-- **Persistence**: Supports both in-memory and file-based storage (for persistence across restarts).
-- **Authentication**: Validates SendGrid API Keys (if configured) to simulate production security.
-- **Message IDs**: Returns SendGrid-style `X-Message-ID` headers.
+- **SendGrid v3 Mail Send API** (`POST /v3/mail/send`) with SendGrid's validation rules and error format. Invalid requests fail here the way they would in production.
+  - One mail per personalization, with per-personalization subject, headers, `from`, and substitutions applied
+  - Dynamic templates: `template_id` and `dynamic_template_data` are stored and shown
+  - `mail_settings.sandbox_mode` answers `200` like SendGrid (the mail is still captured, flagged as sandbox)
+  - `GET /v3/scopes`, `POST /v3/mail/batch`, `GET /v3/mail/batch/{id}`
+- **Web UI** with the HTML, plain text and raw request of each mail, plus attachments and inline (`cid:`) images
+- **Inspection API** for your own tests (see below)
+- **Persistence**: in memory, or one JSON file per mail so mails survive restarts
 
-## Getting Started
+Planned: Brevo (Sendinblue), Mailchimp Transactional (Mandrill), and an SMTP server.
 
-### Prerequisites
+## Getting started
 
-- Docker
-- Or .NET 10.0 SDK for local development
+```bash
+docker run -d -p 5110:8080 mdi1984/nevermail
+```
 
-### Using Docker
+Open the UI at [http://localhost:5110](http://localhost:5110) and point your SendGrid client at `http://localhost:5110`:
 
-The easiest way to run SendGrid Mock is using the Docker image.
+```csharp
+var client = new SendGridClient(new SendGridClientOptions
+{
+    ApiKey = "anything",
+    Host = "http://localhost:5110",
+});
+```
+
+Or with curl:
+
+```bash
+curl -i http://localhost:5110/v3/mail/send \
+  -H 'Authorization: Bearer anything' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "personalizations": [{ "to": [{ "email": "recipient@example.com" }] }],
+    "from": { "email": "sender@example.com" },
+    "subject": "Hello, World!",
+    "content": [{ "type": "text/plain", "value": "This is a test!" }]
+  }'
+```
+
+### Persistence
 
 ```bash
 docker run -d -p 5110:8080 \
-  -e SendGridApiKey="your_test_api_key" \
-  mdi1984/sendgrid-mock
+  -e Storage__Path=/app/data \
+  -v nevermail_data:/app/data \
+  mdi1984/nevermail
 ```
 
-You can then access the UI at [http://localhost:5110](http://localhost:5110) and configure your application to use `http://localhost:5110` as the SendGrid host.
-
-#### Persistence
-
-To persist emails across container restarts, mount a volume to `/app/data` and set the `MailStoragePath` environment variable.
-
-```bash
-docker run -d -p 5110:8080 \
-  -e SendGridApiKey="your_test_api_key" \
-  -e MailStoragePath="/app/data" \
-  -v sendgrid_data:/app/data \
-  mdi1984/sendgrid-mock
-```
-
-### Environment Variables
+## Configuration
 
 | Variable | Description | Default |
-|----------|-------------|---------|
-| `SendGridApiKey` | The API Key to validate against `Authorization` header. | `null` (No auth) |
-| `MailStoragePath` | Path to store email JSON files. If unset, uses **In-Memory** storage. | `null` |
+|---|---|---|
+| `Providers__SendGrid__ApiKey` | If set, requests must send exactly this key (`Authorization: Bearer <key>`). If unset, any key is accepted. A missing `Authorization` header is always rejected, like SendGrid does. | unset |
+| `Providers__SendGrid__Enabled` | Set to `false` to disable the SendGrid endpoints. | `true` |
+| `Storage__Path` | Directory for mail files. If unset, mails are kept in memory only. | unset |
+| `Storage__MaxMessages` | Oldest mails are dropped beyond this count. `0` = unlimited. | `1000` |
 
-## Local Development
+## Inspection API
 
-1. Clone the repository.
-2. Navigate to the `src` directory.
-3. Run the application:
+Useful for asserting on sent mails in integration tests.
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider`, `requestId` (the `X-Message-Id` returned by SendGrid), `limit` |
+| `GET /api/mails/{id}` | Full mail including headers, attachments and the raw request |
+| `GET /api/mails/{id}/attachments/{index}` | Download an attachment |
+| `DELETE /api/mails/{id}` | Delete one mail |
+| `DELETE /api/mails` | Delete all mails |
+| `GET /health` | Health check |
+
+## Development
 
 ```bash
-dotnet run --project SendGridMock/SendGridMock.csproj
+dotnet run --project Nevermail/Nevermail.csproj   # http://localhost:5110
+dotnet test Nevermail.slnx
 ```
 
-The application will start on the configured port (defaulting to http://localhost:5110 in development).
-
-## API Usage
-
-Configure your SendGrid client to point to this service:
-
-**Host**: `http://localhost:5110`  
-**API Key**: Matches `SendGridApiKey` env var (e.g., `your_test_api_key`)
-
-Example cURL:
+Reflection is disabled in the AOT build, so every serialized type must be registered in a source-generated `JsonSerializerContext`. Unit tests run on the JIT and can't catch a missing registration, so CI also runs `scripts/smoke-test.sh` against the built image:
 
 ```bash
-curl --request POST \
-  --url http://localhost:5110/v3/mail/send \
-  --header 'Authorization: Bearer your_test_api_key' \
-  --header 'Content-Type: application/json' \
-  --data '{
-    "personalizations": [
-      {
-        "to": [{"email": "recipient@example.com"}]
-      }
-    ],
-    "from": {"email": "sender@example.com"},
-    "subject": "Hello, World!",
-    "content": [{"type": "text/plain", "value": "This is a test!"}]
-  }'
+docker build -t nevermail:dev .
+sh scripts/smoke-test.sh nevermail:dev
 ```

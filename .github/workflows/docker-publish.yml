@@ -4,15 +4,32 @@ on:
   push:
     branches: [ "main" ]
     tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "main" ]
 
 env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: docker.io
   # github.repository as <account>/<repo>
-  IMAGE_NAME: mdi1984/sendgrid-mock
+  IMAGE_NAME: mdi1984/nevermail
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test Nevermail.slnx
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,6 +78,20 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=sha
+
+      # Build the image locally first and smoke test the NativeAOT binary:
+      # missing source-generated serializer metadata only shows up there.
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v5.0.0
+        with:
+          context: .
+          load: true
+          tags: nevermail:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: sh scripts/smoke-test.sh nevermail:smoke
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action

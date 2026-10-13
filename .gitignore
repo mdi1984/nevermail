@@ -210,4 +210,4 @@ FakesAssemblies/
 *.sln.imls
 
 # persisted mails
-SendGridMock/data
+Nevermail/data

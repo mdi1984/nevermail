@@ -29,7 +29,7 @@ public sealed record SmtpOptions(
 /// One SMTP conversation (RFC 5321) with a client. Accepts every message and hands it to the mail store.
 /// Supports ESMTP with SIZE, 8BITMIME, SMTPUTF8, PIPELINING and AUTH PLAIN/LOGIN; no TLS.
 /// </summary>
-internal sealed class SmtpSession(Stream stream, SmtpOptions options, IMailStore store, TimeProvider time, ILogger logger) : IDisposable
+internal sealed class SmtpSession(Stream stream, SmtpOptions options, IMailStore store, TimeProvider time, FaultInjector faults, ILogger logger) : IDisposable
 {
     private const int MaxCommandLength = 4096;
     private const int MaxDataLineLength = 1024 * 1024;
@@ -186,6 +186,11 @@ internal sealed class SmtpSession(Stream stream, SmtpOptions options, IMailStore
             await ReplyAsync(ct, "452 4.5.3 Too many recipients");
             return;
         }
+        if (faults.ForSmtpRecipient(address) is { } fault)
+        {
+            await ReplyAsync(ct, FaultReply(fault));
+            return;
+        }
 
         _recipients.Add(address);
         await ReplyAsync(ct, "250 2.1.5 OK");
@@ -249,6 +254,14 @@ internal sealed class SmtpSession(Stream stream, SmtpOptions options, IMailStore
 
         var envelope = new SmtpEnvelope(_mailFrom!, [.. _recipients], _helo, _user);
         Reset();
+
+        await faults.DelayAsync(ct);
+        if (faults.ForSmtpMessage() is { } fault)
+        {
+            await ReplyAsync(ct, FaultReply(fault));
+            return true;
+        }
+
         var mail = await SmtpMessageMapper.MapAsync(data.ToArray(), envelope, time.GetUtcNow(), ct);
         await store.AddAsync([mail]);
         logger.LogInformation("Received SMTP mail {Id} from {From} for {Count} recipient(s)", mail.Id, envelope.MailFrom, envelope.Recipients.Count);
@@ -340,6 +353,9 @@ internal sealed class SmtpSession(Stream stream, SmtpOptions options, IMailStore
         await ReplyAsync(ct, "235 2.7.0 Authentication successful");
         return true;
     }
+
+    /// <summary>e.g. "550 5.0.0 Simulated failure ...", using the enhanced status class of the reply code.</summary>
+    private static string FaultReply(Fault fault) => $"{fault.Code} {fault.Code / 100}.0.0 {fault.Reason}";
 
     private async Task<string?> ChallengeAsync(string challenge, CancellationToken ct)
     {

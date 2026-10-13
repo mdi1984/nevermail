@@ -1,5 +1,6 @@
 using Nevermail;
 using Nevermail.Api;
+using Nevermail.Providers;
 using Nevermail.Providers.Brevo;
 using Nevermail.Providers.Mandrill;
 using Nevermail.Providers.SendGrid;
@@ -12,6 +13,7 @@ System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Inst
 var builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<FaultInjector>();
 builder.Services.AddSingleton<IMailStore>(sp => MailStore.FromConfiguration(
     sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<ILogger<MailStore>>()));

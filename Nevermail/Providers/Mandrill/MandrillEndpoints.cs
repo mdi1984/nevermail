@@ -22,13 +22,13 @@ public static class MandrillEndpoints
         return app;
     }
 
-    private static Task<IResult> SendAsync(string version, HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time) =>
-        HandleSendAsync(version, ctx, store, config, time, template: false);
+    private static Task<IResult> SendAsync(string version, HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time, FaultInjector faults) =>
+        HandleSendAsync(version, ctx, store, config, time, faults, template: false);
 
-    private static Task<IResult> SendTemplateAsync(string version, HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time) =>
-        HandleSendAsync(version, ctx, store, config, time, template: true);
+    private static Task<IResult> SendTemplateAsync(string version, HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time, FaultInjector faults) =>
+        HandleSendAsync(version, ctx, store, config, time, faults, template: true);
 
-    private static async Task<IResult> HandleSendAsync(string version, HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time, bool template)
+    private static async Task<IResult> HandleSendAsync(string version, HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time, FaultInjector faults, bool template)
     {
         if (!IsSupportedVersion(version))
         {
@@ -58,6 +58,21 @@ public static class MandrillEndpoints
         if (Validate(request, template) is { } error)
         {
             return ValidationError(error);
+        }
+
+        await faults.DelayAsync(ctx.RequestAborted);
+        var recipients = request.Message!.To!.Select(r => r.Email).Append(request.Message.BccAddress);
+        if (faults.ForHttp(recipients) is { } fault)
+        {
+            ProviderHelpers.AddRetryAfter(ctx, fault);
+            var name = fault.Code switch
+            {
+                401 => "Invalid_Key",
+                402 => "PaymentRequired",
+                429 => "Too_Many_Requests",
+                _ => "GeneralError",
+            };
+            return Results.Json(new MandrillError("error", fault.Code == 401 ? -1 : -99, name, fault.Reason), MandrillJsonContext.Default.MandrillError, statusCode: fault.Code);
         }
 
         var delivery = MandrillMapper.Map(request, raw, MailIds.New(), time.GetUtcNow());

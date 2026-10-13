@@ -36,7 +36,7 @@ public static class SendGridEndpoints
     private static IResult GetBatch(string batchId, HttpContext ctx, IConfiguration config) =>
         Authorize(ctx, config) ?? Results.Json(new SendGridBatchResponse(batchId), SendGridJsonContext.Default.SendGridBatchResponse);
 
-    private static async Task<IResult> SendAsync(HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time)
+    private static async Task<IResult> SendAsync(HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time, FaultInjector faults)
     {
         if (Authorize(ctx, config) is { } unauthorized)
         {
@@ -67,6 +67,14 @@ public static class SendGridEndpoints
 
         // Sandbox mode: SendGrid validates the request and answers 200 instead of 202, but delivers nothing.
         // We keep the mail (flagged) so it can still be inspected.
+        await faults.DelayAsync(ctx.RequestAborted);
+        var recipients = request.Personalizations!.SelectMany(p => (p.To ?? []).Concat(p.Cc ?? []).Concat(p.Bcc ?? [])).Select(a => a.Email);
+        if (faults.ForHttp(recipients) is { } fault)
+        {
+            ProviderHelpers.AddRetryAfter(ctx, fault);
+            return Results.Json(new SendGridErrorResponse([new SendGridError(fault.Reason)]), SendGridJsonContext.Default.SendGridErrorResponse, statusCode: fault.Code);
+        }
+
         var sandbox = request.MailSettings?.SandboxMode?.Enable == true;
         var requestId = MailIds.New();
         await store.AddAsync(SendGridMapper.Map(request, raw, requestId, sandbox, time.GetUtcNow()));

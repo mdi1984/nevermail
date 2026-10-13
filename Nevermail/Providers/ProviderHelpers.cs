@@ -11,6 +11,15 @@ public static class ProviderHelpers
         return await reader.ReadToEndAsync(ctx.RequestAborted);
     }
 
+    /// <summary>Rate limits and outages tell clients when to retry.</summary>
+    public static void AddRetryAfter(HttpContext ctx, Fault fault)
+    {
+        if (fault.Code is 429 or 503)
+        {
+            ctx.Response.Headers.RetryAfter = "1";
+        }
+    }
+
     public static bool IsBase64(string value) => System.Buffers.Text.Base64.IsValid(value);
 
     /// <summary>Strings as-is, everything else (numbers, objects, ...) as raw JSON.</summary>

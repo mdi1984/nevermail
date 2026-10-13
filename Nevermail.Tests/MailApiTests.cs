@@ -105,6 +105,59 @@ public sealed class MailApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Wait_ReturnsAsSoonAsAMatchingMailArrives()
+    {
+        var client = _factory.CreateClient();
+        var waiting = client.GetFromJsonAsync<List<MailSummary>>("/api/mails?to=late@example.com&wait=10");
+        await Task.Delay(200);
+        await AddAsync("other", "someone@example.com");
+        Assert.False(waiting.IsCompleted, "a non-matching mail must not end the wait");
+
+        await AddAsync("late one", "late@example.com");
+
+        var result = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("late one", Assert.Single(result!).Subject);
+    }
+
+    [Fact]
+    public async Task Wait_ForCount_WaitsForEnoughMails()
+    {
+        var client = _factory.CreateClient();
+        var waiting = client.GetFromJsonAsync<List<MailSummary>>("/api/mails?wait=10&count=2");
+        await AddAsync("first");
+        await Task.Delay(200);
+        Assert.False(waiting.IsCompleted);
+
+        await AddAsync("second");
+
+        Assert.Equal(2, (await waiting.WaitAsync(TimeSpan.FromSeconds(5)))!.Count);
+    }
+
+    [Fact]
+    public async Task Wait_TimesOutWithWhatMatches()
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await _factory.ListMailsAsync("?to=nobody@example.com&wait=1");
+
+        Assert.Empty(result);
+        Assert.InRange(stopwatch.ElapsedMilliseconds, 900, 4000);
+    }
+
+    [Fact]
+    public async Task Delete_WithFilter_OnlyDeletesMatches()
+    {
+        await AddAsync("keep", "keep@example.com");
+        await AddAsync("drop 1", "drop@example.com");
+        await AddAsync("drop 2", "drop@example.com");
+
+        var response = await _factory.CreateClient().DeleteAsync("/api/mails?to=drop@example.com");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("keep", Assert.Single(await _factory.ListMailsAsync()).Subject);
+    }
+
+    [Fact]
     public async Task Info_ListsProvidersAndSmtpPort()
     {
         var info = await _factory.CreateClient().GetFromJsonAsync<JsonElement>("/api/info");

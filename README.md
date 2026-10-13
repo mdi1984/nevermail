@@ -4,7 +4,7 @@
 
 Nevermail is a tiny local stand-in for transactional email services. Point your app at it instead of the real provider, and every mail it "sends" ends up in a web UI where you can inspect it. Nothing ever leaves your machine. It's built for local dev and integration tests, e.g. as a container in a .NET Aspire app host.
 
-It speaks the HTTP APIs of **SendGrid**, **Brevo** (formerly Sendinblue) and **Mailchimp Transactional** (Mandrill), and plain **SMTP**. The image is a NativeAOT binary on `scratch`, about 16 MB.
+It speaks the HTTP APIs of **SendGrid**, **Brevo** (formerly Sendinblue) and **Mailchimp Transactional** (Mandrill), and plain **SMTP**. The image is a NativeAOT binary on `scratch`, about 16 MB, for `linux/amd64` and `linux/arm64`.
 
 > Formerly **SendGrid Mock** (`mdi1984/sendgrid-mock`). That image is frozen; use `mdi1984/nevermail`.
 
@@ -14,7 +14,8 @@ It speaks the HTTP APIs of **SendGrid**, **Brevo** (formerly Sendinblue) and **M
 - **Delivery semantics**: SendGrid personalizations, Brevo message versions, and Mandrill's per-recipient sending each turn into the individual mails the provider would deliver, with merge tags filled in for the simple cases.
 - **SMTP server** like Mailpit: any client, AUTH PLAIN/LOGIN, MIME parsing including attachments, inline images and legacy charsets.
 - **Web UI** with live updates, search and provider filters. Each mail shows its HTML preview (desktop/tablet/mobile widths), plain text, HTML source, headers, metadata and template data, and the raw request, plus attachments, inline (`cid:`) images and `.eml` download. Light and dark themes, keyboard navigation (`j`/`k`, `/`, `Del`), and it works on phones. Self-contained: no CDNs, works offline.
-- **Inspection API** for your own tests (see below)
+- **Inspection API** for your own tests, including waiting for a mail instead of sleeping (see below)
+- **Fault injection**: make sends fail with rate limits, outages or bounces, to test your error handling and retries
 - **Persistence**: in memory, or one JSON file per mail so mails survive restarts
 
 ## Getting started
@@ -122,6 +123,9 @@ Port `1025`. Supports `SIZE`, `8BITMIME`, `SMTPUTF8`, `PIPELINING` and `AUTH PLA
 | `Smtp__IdleTimeoutSeconds` | Idle connections are closed after this time. | `300` |
 | `Storage__Path` | Directory for mail files. If unset, mails are kept in memory only. | unset |
 | `Storage__MaxMessages` | Oldest mails are dropped beyond this count. `0` = unlimited. | `1000` |
+| `Faults__Rate` | Share of sends (0 to 1) that fail on purpose, see [Fault injection](#fault-injection). | `0` |
+| `Faults__StatusCode` | HTTP status for those failures. SMTP answers `451`. | `503` |
+| `Faults__DelayMs` | Delay added to every send, like a slow provider. | `0` |
 
 ## Inspection API
 
@@ -129,15 +133,41 @@ Useful for asserting on sent mails in integration tests.
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider` (`sendgrid`, `brevo`, `mandrill`, `smtp`), `requestId` (e.g. SendGrid's `X-Message-Id`), `limit` |
+| `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider` (`sendgrid`, `brevo`, `mandrill`, `smtp`), `requestId` (e.g. SendGrid's `X-Message-Id`), `limit`. Add `wait=<seconds>` (max 60) to block until at least `count` (default 1) mails match |
 | `GET /api/mails/{id}` | Full mail including headers, attachments and the raw request |
 | `GET /api/mails/{id}/attachments/{index}` | Download an attachment |
 | `GET /api/mails/{id}/eml` | The mail as an `.eml` file (SMTP mails exactly as received) |
 | `GET /api/events` | Server-sent events (`added`, `deleted`, `cleared`) whenever mails change |
 | `GET /api/info` | Enabled providers and the SMTP port |
 | `DELETE /api/mails/{id}` | Delete one mail |
-| `DELETE /api/mails` | Delete all mails |
+| `DELETE /api/mails` | Delete all mails, or only those matching `search`, `to`, `provider`, `requestId` |
 | `GET /health` | Health check |
+
+In an integration test, wait for the mail instead of sleeping:
+
+```csharp
+await app.RegisterUserAsync("alice@example.com");
+
+var mails = await http.GetFromJsonAsync<JsonElement>("http://localhost:5110/api/mails?to=alice@example.com&wait=10");
+var id = mails[0].GetProperty("id").GetString();
+var mail = await http.GetFromJsonAsync<JsonElement>($"http://localhost:5110/api/mails/{id}");
+Assert.Contains("Confirm your address", mail.GetProperty("message").GetProperty("subject").GetString());
+```
+
+Tests running in parallel can clean up after themselves with `DELETE /api/mails?to=alice@example.com`.
+
+## Fault injection
+
+Send to an address at `fail-<code>.test` to make that send fail:
+
+| Recipient | Result |
+|---|---|
+| `x@fail-429.test` | HTTP 429 with `Retry-After`, in the provider's error format |
+| `x@fail-500.test`, `x@fail-503.test`, ... | That HTTP status |
+| `x@fail-550.test` (SMTP) | `RCPT TO` is rejected with `550`; other recipients of the mail still get it |
+| `x@fail-450.test` (SMTP) | Temporary rejection, `450` |
+
+Nothing is captured for failed API sends. For random failures across all sends, set `Faults__Rate` (e.g. `0.2`) and optionally `Faults__StatusCode`. `Faults__DelayMs` simulates a slow provider.
 
 ## Development
 

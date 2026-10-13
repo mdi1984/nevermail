@@ -15,7 +15,7 @@ public static class BrevoEndpoints
         return app;
     }
 
-    private static async Task<IResult> SendAsync(HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time)
+    private static async Task<IResult> SendAsync(HttpContext ctx, IMailStore store, IConfiguration config, TimeProvider time, FaultInjector faults)
     {
         if (Authorize(ctx, config) is { } unauthorized)
         {
@@ -42,6 +42,23 @@ public static class BrevoEndpoints
         if (BrevoValidator.Validate(request) is { } error)
         {
             return Error(400, error);
+        }
+
+        await faults.DelayAsync(ctx.RequestAborted);
+        if (faults.ForHttp(Recipients(request)) is { } fault)
+        {
+            ProviderHelpers.AddRetryAfter(ctx, fault);
+            var code = fault.Code switch
+            {
+                401 => "unauthorized",
+                402 => "not_enough_credits",
+                403 => "permission_denied",
+                404 => "document_not_found",
+                429 => "too_many_requests",
+                >= 500 => "internal_error",
+                _ => "bad_request",
+            };
+            return Error(fault.Code, new BrevoError(code, fault.Reason));
         }
 
         var now = time.GetUtcNow();
@@ -86,6 +103,14 @@ public static class BrevoEndpoints
         return !string.IsNullOrEmpty(expected) && key != expected
             ? Error(401, new BrevoError("unauthorized", "Key not found"))
             : null;
+    }
+
+    private static IEnumerable<string?> Recipients(BrevoRequest r)
+    {
+        var lists = r.MessageVersions is { Count: > 0 } versions
+            ? versions.SelectMany(v => new[] { v.To, v.Cc ?? r.Cc, v.Bcc ?? r.Bcc })
+            : [r.To, r.Cc, r.Bcc];
+        return lists.SelectMany(list => list ?? []).Select(a => a.Email);
     }
 
     private static IResult Error(int statusCode, BrevoError error) =>

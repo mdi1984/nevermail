@@ -6,7 +6,7 @@ using Nevermail.Storage;
 namespace Nevermail.Providers.Smtp;
 
 /// <summary>Plain SMTP listener (like Mailpit/MailHog) that captures every message it receives.</summary>
-public sealed class SmtpServer(IConfiguration config, IMailStore store, TimeProvider time, ILogger<SmtpServer> logger) : IHostedService
+public sealed class SmtpServer(IConfiguration config, IMailStore store, TimeProvider time, FaultInjector faults, ILogger<SmtpServer> logger) : IHostedService
 {
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Task, bool> _sessions = new();
@@ -132,7 +132,7 @@ public sealed class SmtpServer(IConfiguration config, IMailStore store, TimeProv
             using (client)
             await using (var stream = client.GetStream())
             {
-                using var session = new SmtpSession(stream, _options!, store, time, logger);
+                using var session = new SmtpSession(stream, _options!, store, time, faults, logger);
                 await session.RunAsync(ct);
             }
         }

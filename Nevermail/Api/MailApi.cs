@@ -21,9 +21,14 @@ public static class MailApi
 
         var mails = app.MapGroup("/api/mails");
 
-        mails.MapGet("/", (IMailStore store, string? search, string? provider, string? to, string? requestId, int? limit) =>
+        // ?wait=<seconds> blocks until at least ?count= (default 1) mails match, so tests don't need sleeps.
+        mails.MapGet("/", async (IMailStore store, string? search, string? provider, string? to, string? requestId, int? limit,
+            int? wait, int? count, CancellationToken ct) =>
         {
-            var result = store.Query(new MailQuery(search, provider, to, requestId, limit));
+            var query = new MailQuery(search, provider, to, requestId, limit);
+            var result = wait is > 0
+                ? await WaitForMailsAsync(store, query, Math.Max(count ?? 1, 1), TimeSpan.FromSeconds(Math.Min(wait.Value, MaxWaitSeconds)), ct)
+                : store.Query(query);
             return TypedResults.Ok(result.Select(MailSummary.Create).ToList());
         });
 
@@ -56,13 +61,68 @@ public static class MailApi
         mails.MapDelete("/{id}", (string id, IMailStore store) =>
             store.Delete(id) ? Results.NoContent() : Results.NotFound());
 
-        mails.MapDelete("/", (IMailStore store) =>
+        // Without filters: delete everything. With filters: only matching mails (handy for tests running in parallel).
+        mails.MapDelete("/", (IMailStore store, string? search, string? provider, string? to, string? requestId) =>
         {
-            store.Clear();
+            if (search is null && provider is null && to is null && requestId is null)
+            {
+                store.Clear();
+            }
+            else
+            {
+                foreach (var mail in store.Query(new MailQuery(search, provider, to, requestId)))
+                {
+                    store.Delete(mail.Id);
+                }
+            }
             return Results.NoContent();
         });
 
         return app;
+    }
+
+    private const int MaxWaitSeconds = 60;
+
+    /// <summary>Returns as soon as <paramref name="count"/> mails match, or whatever matches when the timeout expires.</summary>
+    private static async Task<IReadOnlyList<StoredMail>> WaitForMailsAsync(IMailStore store, MailQuery query, int count, TimeSpan timeout, CancellationToken ct)
+    {
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnChanged(MailStoreChange change)
+        {
+            if (change.Kind == "added")
+            {
+                signal.TrySetResult();
+            }
+        }
+
+        store.Changed += OnChanged;
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(timeout);
+            while (true)
+            {
+                // Arm the signal before querying, so a mail added in between is never missed.
+                signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var result = store.Query(query);
+                if (result.Count >= count)
+                {
+                    return result;
+                }
+                try
+                {
+                    await signal.Task.WaitAsync(deadline.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    return store.Query(query);
+                }
+            }
+        }
+        finally
+        {
+            store.Changed -= OnChanged;
+        }
     }
 
     private static async IAsyncEnumerable<SseItem<string>> StreamChangesAsync(IMailStore store, [EnumeratorCancellation] CancellationToken ct)

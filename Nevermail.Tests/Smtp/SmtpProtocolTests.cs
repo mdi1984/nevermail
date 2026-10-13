@@ -68,7 +68,8 @@ public sealed class SmtpProtocolTests : IDisposable
         var mail = Assert.Single(_factory.Store.Query(new()));
         Assert.EndsWith(mail.Id, reply);
         Assert.Equal("Raw", mail.Message.Subject);
-        Assert.Equal(".leading dot\r\nline 2\r\n", mail.Message.Text);
+        // MimeKit returns the platform's line endings, so compare normalized.
+        Assert.Equal(".leading dot\nline 2\n", mail.Message.Text?.ReplaceLineEndings("\n"));
         Assert.Equal("client.example", mail.Message.Metadata["smtp.helo"]);
     }
 

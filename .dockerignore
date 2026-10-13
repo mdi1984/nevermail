@@ -7,6 +7,8 @@
 **/obj
 **/TestResults
 **/packages
-SendGridMock.Tests/
+Nevermail.Tests/
 Dockerfile
 README.md
+Nevermail.Aspire.Hosting/
+Nevermail.Aspire.Hosting.Tests/

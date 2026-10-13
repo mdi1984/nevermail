@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Dockerfile" />
+  </Folder>
+  <Project Path="Nevermail.Aspire.Hosting.Tests/Nevermail.Aspire.Hosting.Tests.csproj" />
+  <Project Path="Nevermail.Aspire.Hosting/Nevermail.Aspire.Hosting.csproj" />
+  <Project Path="Nevermail.Tests/Nevermail.Tests.csproj" Id="71799e3c-7018-4e64-83b8-9cac183fdf8f" />
+  <Project Path="Nevermail/Nevermail.csproj" />
+</Solution>

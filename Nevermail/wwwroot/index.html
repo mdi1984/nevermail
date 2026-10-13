@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Nevermail</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css">
+    <script>
+        // Apply the saved theme before first paint to avoid a flash.
+        try {
+            const theme = localStorage.getItem('nevermail.theme');
+            if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+        } catch { }
+    </script>
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="#" title="Nevermail">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Zm2.1-.3 6.9 5.2 6.9-5.2a.9.9 0 0 0-.4-.1h-13a.9.9 0 0 0-.4.1ZM19 8.2l-6.4 4.8a1 1 0 0 1-1.2 0L5 8.2v9.3c0 .3.2.5.5.5h13c.3 0 .5-.2.5-.5V8.2Z"/><path d="m4 20 16-16" class="brand-strike"/></svg>
+            <span>Nevermail</span>
+        </a>
+        <div class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 0 1 5.2 10.4l4 4a1 1 0 0 1-1.4 1.4l-4-4A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"/></svg>
+            <input id="search" type="search" placeholder="Search subject, sender, recipient" autocomplete="off" aria-label="Search mails" title="Search (/)">
+        </div>
+        <select id="provider-filter" aria-label="Filter by provider">
+            <option value="">All providers</option>
+        </select>
+        <div class="topbar-actions">
+            <span id="live" class="live" title="Connecting…"><span class="live-dot"></span><span class="live-label">Live</span></span>
+            <button id="theme-toggle" class="icon-button" type="button" title="Theme: system" aria-label="Toggle theme">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 2v14a7 7 0 0 1 0-14Z"/></svg>
+            </button>
+            <button id="clear-all" class="button danger-subtle" type="button" title="Delete all mails">Delete all</button>
+            <a class="icon-button" href="https://github.com/mdi1984/nevermail" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12 2C6.5 2 2 6.5 2 12c0 4.4 2.9 8.2 6.8 9.5.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.6 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.6.6.7 1 1.6 1 2.7 0 3.8-2.3 4.7-4.6 4.9.4.3.7.9.7 1.9v2.7c0 .3.2.6.7.5A10 10 0 0 0 22 12c0-5.5-4.5-10-10-10Z"/></svg>
+            </a>
+        </div>
+    </header>
+
+    <main class="layout">
+        <aside class="list-pane" aria-label="Mails">
+            <div id="filter-bar" class="filter-bar" hidden></div>
+            <div id="list" class="mail-list" role="listbox" aria-label="Mail list" tabindex="0"></div>
+            <div id="list-footer" class="list-footer"></div>
+        </aside>
+        <section id="detail" class="detail-pane" aria-live="polite"></section>
+    </main>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

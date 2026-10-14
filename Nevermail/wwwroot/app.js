@@ -1,6 +1,6 @@
 // Nevermail web UI. Plain ES module, no build step, no dependencies.
 
-const PROVIDERS = { sendgrid: 'SendGrid', brevo: 'Brevo', mandrill: 'Mandrill', smtp: 'SMTP' };
+const PROVIDERS = { sendgrid: 'SendGrid', brevo: 'Brevo', mandrill: 'Mandrill', azure: 'Azure', smtp: 'SMTP' };
 const PREVIEW_WIDTHS = { desktop: '100%', tablet: '768px', mobile: '375px' };
 const SEEN_KEY = 'nevermail.seen';
 const MAX_SEEN = 2000;
@@ -554,6 +554,7 @@ function renderWelcome() {
         ['sendgrid', origin, 'SendGridClientOptions.Host · Authorization: Bearer <any key>'],
         ['brevo', `${origin}/v3`, 'Configuration.BasePath · api-key header'],
         ['mandrill', `${origin}/api/1.3/`, 'HttpClient.BaseAddress for Mandrill.net · any 1.x version works'],
+        ['azure', `endpoint=${origin}/;accesskey=bmV2ZXJtYWls`, 'EmailClient connection string (Azure Communication Services) · any base64 access key'],
     ].filter(([provider]) => enabled.includes(provider));
     if (state.info?.smtpPort) {
         endpoints.push(['smtp', `${location.hostname}:${state.info.smtpPort}`, 'Plain SMTP, no TLS, any credentials. Inside Docker this is the container port.']);

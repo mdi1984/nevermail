@@ -1,6 +1,7 @@
 using Nevermail;
 using Nevermail.Api;
 using Nevermail.Providers;
+using Nevermail.Providers.AzureEmail;
 using Nevermail.Providers.Brevo;
 using Nevermail.Providers.Mandrill;
 using Nevermail.Providers.SendGrid;
@@ -14,6 +15,7 @@ var builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<FaultInjector>();
+builder.Services.AddSingleton<AzureEmailOperations>();
 builder.Services.AddSingleton<IMailStore>(sp => MailStore.FromConfiguration(
     sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<ILogger<MailStore>>()));
@@ -51,6 +53,11 @@ if (IsEnabled("Providers:Mandrill"))
 {
     app.MapMandrill();
     providers.Add(MandrillEndpoints.ProviderKey);
+}
+if (IsEnabled("Providers:Azure"))
+{
+    app.MapAzureEmail();
+    providers.Add(AzureEmailEndpoints.ProviderKey);
 }
 
 app.MapMailApi(providers);

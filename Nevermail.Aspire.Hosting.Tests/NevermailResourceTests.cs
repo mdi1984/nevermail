@@ -64,13 +64,13 @@ public sealed class NevermailResourceTests
     }
 
     [Fact]
-    public void ConnectionString_ContainsHttpAndSmtpEndpoints()
+    public void ConnectionString_ContainsEndpointsAndAzureAccessKey()
     {
         var (_, mail) = Create();
 
         var expression = mail.Resource.ConnectionStringExpression.ValueExpression;
 
-        Assert.Equal("Endpoint={mail.bindings.http.url};SmtpHost={mail.bindings.smtp.host};SmtpPort={mail.bindings.smtp.port}", expression);
+        Assert.Equal("Endpoint={mail.bindings.http.url};SmtpHost={mail.bindings.smtp.host};SmtpPort={mail.bindings.smtp.port};AccessKey=bmV2ZXJtYWls", expression);
     }
 
     [Fact]

@@ -8,8 +8,8 @@
 
     <PackageId>Nevermail.Aspire.Hosting</PackageId>
     <Authors>Markus Dietrich</Authors>
-    <Description>.NET Aspire hosting integration for Nevermail, a local mock for SendGrid, Brevo, Mailchimp Transactional (Mandrill) and SMTP. Every mail your app sends ends up in a web UI instead of an inbox.</Description>
-    <PackageTags>aspire;hosting;email;mock;sendgrid;brevo;sendinblue;mandrill;mailchimp;smtp;testing</PackageTags>
+    <Description>.NET Aspire hosting integration for Nevermail, a local mock for SendGrid, Brevo, Mailchimp Transactional (Mandrill), Azure Communication Services Email and SMTP. Every mail your app sends ends up in a web UI instead of an inbox.</Description>
+    <PackageTags>aspire;hosting;email;mock;sendgrid;brevo;sendinblue;mandrill;mailchimp;azure;acs;communication-services;smtp;testing</PackageTags>
     <RepositoryUrl>https://github.com/mdi1984/nevermail</RepositoryUrl>
     <PackageProjectUrl>https://github.com/mdi1984/nevermail</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>

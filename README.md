@@ -4,14 +4,14 @@
 
 Nevermail is a tiny local stand-in for transactional email services. Point your app at it instead of the real provider, and every mail it "sends" ends up in a web UI where you can inspect it. Nothing ever leaves your machine. It's built for local dev and integration tests, e.g. as a container in a .NET Aspire app host.
 
-It speaks the HTTP APIs of **SendGrid**, **Brevo** (formerly Sendinblue) and **Mailchimp Transactional** (Mandrill), and plain **SMTP**. The image is a NativeAOT binary on `scratch`, about 16 MB, for `linux/amd64` and `linux/arm64`.
+It speaks the HTTP APIs of **SendGrid**, **Brevo** (formerly Sendinblue), **Mailchimp Transactional** (Mandrill) and **Azure Communication Services Email**, and plain **SMTP**. The image is a NativeAOT binary on `scratch`, about 16 MB, for `linux/amd64` and `linux/arm64`.
 
 > Formerly **SendGrid Mock** (`mdi1984/sendgrid-mock`). That image is frozen; use `mdi1984/nevermail`.
 
 ## Features
 
 - **Realistic APIs**: each provider validates requests the way the real service does and answers with its own response and error format. A request that would fail in production fails here too.
-- **Delivery semantics**: SendGrid personalizations, Brevo message versions, and Mandrill's per-recipient sending each turn into the individual mails the provider would deliver, with merge tags filled in for the simple cases.
+- **Delivery semantics**: SendGrid personalizations, Brevo message versions, and Mandrill's per-recipient sending each turn into the individual mails the provider would deliver, with merge tags filled in for the simple cases. Azure's long-running send operations can be polled like the real thing.
 - **SMTP server** like Mailpit: any client, AUTH PLAIN/LOGIN, MIME parsing including attachments, inline images and legacy charsets.
 - **Web UI** with live updates, search and provider filters. Each mail shows its HTML preview (desktop/tablet/mobile widths), plain text, HTML source, headers, metadata and template data, and the raw request, plus attachments, inline (`cid:`) images and `.eml` download. Light and dark themes, keyboard navigation (`j`/`k`, `/`, `Del`), and it works on phones. Self-contained: no CDNs, works offline.
 - **Inspection API** for your own tests, including waiting for a mail instead of sleeping (see below)
@@ -31,6 +31,7 @@ The UI is at [http://localhost:5110](http://localhost:5110). Then point your app
 | SendGrid | `http://localhost:5110` | `Authorization: Bearer <key>` |
 | Brevo | `http://localhost:5110/v3` | `api-key: <key>` header |
 | Mailchimp Transactional | `http://localhost:5110/api/1.3/` (any `1.x` works, with or without `.json` suffix) | `key` in the request body |
+| Azure Communication Services | connection string `endpoint=http://localhost:5110/;accesskey=bmV2ZXJtYWls` | access key (any base64 value) |
 | SMTP | `localhost:1025`, no TLS | optional |
 
 ```csharp
@@ -44,6 +45,9 @@ var brevo = new TransactionalEmailsApi(config);
 
 // Mandrill.net uses the HttpClient's base address as API root
 var mandrill = new MandrillApi("anything", new HttpClient { BaseAddress = new Uri("http://localhost:5110/api/1.3/") });
+
+// Azure Communication Services (Azure.Communication.Email)
+var azure = new EmailClient("endpoint=http://localhost:5110/;accesskey=bmV2ZXJtYWls");
 
 // SMTP (MailKit, System.Net.Mail, ...)
 await smtp.ConnectAsync("localhost", 1025, SecureSocketOptions.None);
@@ -67,15 +71,24 @@ dotnet add package Nevermail.Aspire.Hosting
 ```
 
 ```csharp
+// App host
 var mail = builder.AddNevermail("mail");
 
 builder.AddProject<Projects.Api>("api")
-    .WithReference(mail)                                            // ConnectionStrings__mail
-    .WithEnvironment("SendGrid__Host", mail.Resource.HttpEndpoint)  // or pass single endpoints
+    .WithReference(mail)   // ConnectionStrings__mail = Endpoint=...;SmtpHost=...;SmtpPort=...;AccessKey=...
     .WaitFor(mail);
 ```
 
-The dashboard links to the inbox. Options include `WithDataVolume()`, `WithFaults(...)`, `WithSmtpCredentials(...)` and per-provider API keys; see the [package README](Nevermail.Aspire.Hosting/README.md). The package works with any Aspire 13.x.
+```csharp
+// Api project
+var connectionString = builder.Configuration.GetConnectionString("mail")!;
+var endpoint = (string)new DbConnectionStringBuilder { ConnectionString = connectionString }["Endpoint"];
+
+builder.Services.AddSendGrid(o => { o.ApiKey = "dev"; o.Host = endpoint; });       // SendGrid
+builder.Services.AddAzureClients(c => c.AddEmailClient(connectionString));          // Azure Communication Services
+```
+
+The dashboard links to the inbox. The [package README](Nevermail.Aspire.Hosting/README.md) has samples for every provider, options like `WithDataVolume()` and `WithFaults(...)`, using Nevermail locally and the real provider when deployed, and integration tests with `Aspire.Hosting.Testing`. The package works with any Aspire 13.x.
 
 ### Persistence
 
@@ -116,6 +129,16 @@ docker run -d -p 5110:8080 -p 1025:1025   -e Storage__Path=/app/data   -v neverm
 - Invalid recipients are reported as `"status":"invalid"` and aren't delivered, `send_at` in the future reports `"scheduled"`, and `images` become inline attachments.
 - `send-template` accepts any template name and stores it with the template content and merge vars.
 
+### Azure Communication Services Email
+
+`POST /emails:send` and `GET /emails/operations/{id}`, for any `api-version` (`2023-03-31`, `2025-09-01`, previews and future versions).
+
+- Sending starts a long-running operation like on Azure: `202` with an `Operation-Location` header. Nevermail completes it right away, so the SDK's `WaitUntil.Completed` returns after the first poll. The operation ID is the client's `Operation-Id` (the SDK always sends one) and the captured mail's `requestId`. Retries with the same `Operation-Id` don't send the mail twice.
+- Errors look like Azure's: `{"error":{"code":"BadRequest","message":"Request body validation error. See property 'attachments[0].contentType'"}}` plus an `x-ms-error-code` header, first error only.
+- Checks the documented limits: at most 50 recipients, 10 MB per request, and the attachment MIME type allow-list. The sender must be a bare address; whether its domain would be verified on Azure isn't checked.
+- Requests must be signed with an access key (`HMAC-SHA256`) or carry a bearer token, but signatures aren't verified, so any base64 access key works. Microsoft Entra ID credentials (`DefaultAzureCredential`, managed identity) can't be used locally: the Azure SDK refuses bearer tokens over plain `http`. Use a connection string in development.
+- Azure's SMTP relay (`smtp.azurecomm.net`) needs STARTTLS, which Nevermail doesn't support. Point SMTP clients at Nevermail's SMTP server without TLS instead.
+
 ### SMTP
 
 Port `1025`. Supports `SIZE`, `8BITMIME`, `SMTPUTF8`, `PIPELINING` and `AUTH PLAIN`/`LOGIN`. STARTTLS isn't supported.
@@ -132,7 +155,7 @@ Port `1025`. Supports `SIZE`, `8BITMIME`, `SMTPUTF8`, `PIPELINING` and `AUTH PLA
 | `Providers__SendGrid__ApiKey` | If set, requests must use this key. If unset, any key is accepted, but a missing `Authorization` header is always rejected, like SendGrid does. | unset |
 | `Providers__Brevo__ApiKey` | Same for Brevo's `api-key` header. | unset |
 | `Providers__Mandrill__ApiKey` | Same for Mandrill's `key` body field. | unset |
-| `Providers__<Name>__Enabled` | Set to `false` to disable a provider's endpoints (`SendGrid`, `Brevo`, `Mandrill`). | `true` |
+| `Providers__<Name>__Enabled` | Set to `false` to disable a provider's endpoints (`SendGrid`, `Brevo`, `Mandrill`, `Azure`). | `true` |
 | `Smtp__Enabled` | Set to `false` to disable the SMTP server. | `true` |
 | `Smtp__Port` | SMTP port inside the container. | `1025` |
 | `Smtp__Username`, `Smtp__Password` | If set, clients must authenticate with these credentials before sending. | unset |
@@ -150,7 +173,7 @@ Useful for asserting on sent mails in integration tests.
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider` (`sendgrid`, `brevo`, `mandrill`, `smtp`), `requestId` (e.g. SendGrid's `X-Message-Id`), `limit`. Add `wait=<seconds>` (max 60) to block until at least `count` (default 1) mails match |
+| `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider` (`sendgrid`, `brevo`, `mandrill`, `azure`, `smtp`), `requestId` (e.g. SendGrid's `X-Message-Id`), `limit`. Add `wait=<seconds>` (max 60) to block until at least `count` (default 1) mails match |
 | `GET /api/mails/{id}` | Full mail including headers, attachments and the raw request |
 | `GET /api/mails/{id}/attachments/{index}` | Download an attachment |
 | `GET /api/mails/{id}/eml` | The mail as an `.eml` file (SMTP mails exactly as received) |
@@ -181,6 +204,7 @@ Send to an address at `fail-<code>.test` to make that send fail:
 |---|---|
 | `x@fail-429.test` | HTTP 429 with `Retry-After`, in the provider's error format |
 | `x@fail-500.test`, `x@fail-503.test`, ... | That HTTP status |
+| `x@fail-dropped.test` (Azure) | Accepted with `202`, then the operation fails with `EmailDropped` when polled |
 | `x@fail-550.test` (SMTP) | `RCPT TO` is rejected with `550`; other recipients of the mail still get it |
 | `x@fail-450.test` (SMTP) | Temporary rejection, `450` |
 

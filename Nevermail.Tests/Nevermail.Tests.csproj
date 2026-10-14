@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.Communication.Email" Version="1.1.0" />
     <PackageReference Include="brevo_csharp" Version="1.1.3" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="MailKitLite" Version="4.18.1" />

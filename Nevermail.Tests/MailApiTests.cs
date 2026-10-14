@@ -162,7 +162,7 @@ public sealed class MailApiTests : IDisposable
     {
         var info = await _factory.CreateClient().GetFromJsonAsync<JsonElement>("/api/info");
 
-        Assert.Equal(["sendgrid", "brevo", "mandrill"], info.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
+        Assert.Equal(["sendgrid", "brevo", "mandrill", "azure"], info.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
         Assert.Equal(_factory.SmtpPort, info.GetProperty("smtpPort").GetInt32());
     }
 

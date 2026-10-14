@@ -71,17 +71,24 @@ dotnet add package Nevermail.Aspire.Hosting
 ```
 
 ```csharp
+// App host
 var mail = builder.AddNevermail("mail");
 
 builder.AddProject<Projects.Api>("api")
-    .WithReference(mail)                                            // ConnectionStrings__mail
-    .WithEnvironment("SendGrid__Host", mail.Resource.HttpEndpoint)  // or pass single endpoints
+    .WithReference(mail)   // ConnectionStrings__mail = Endpoint=...;SmtpHost=...;SmtpPort=...;AccessKey=...
     .WaitFor(mail);
 ```
 
-The connection string also works as an Azure Communication Services connection string: `new EmailClient(builder.Configuration.GetConnectionString("mail"))`.
+```csharp
+// Api project
+var connectionString = builder.Configuration.GetConnectionString("mail")!;
+var endpoint = (string)new DbConnectionStringBuilder { ConnectionString = connectionString }["Endpoint"];
 
-The dashboard links to the inbox. Options include `WithDataVolume()`, `WithFaults(...)`, `WithSmtpCredentials(...)` and per-provider API keys; see the [package README](Nevermail.Aspire.Hosting/README.md). The package works with any Aspire 13.x.
+builder.Services.AddSendGrid(o => { o.ApiKey = "dev"; o.Host = endpoint; });       // SendGrid
+builder.Services.AddAzureClients(c => c.AddEmailClient(connectionString));          // Azure Communication Services
+```
+
+The dashboard links to the inbox. The [package README](Nevermail.Aspire.Hosting/README.md) has samples for every provider, options like `WithDataVolume()` and `WithFaults(...)`, using Nevermail locally and the real provider when deployed, and integration tests with `Aspire.Hosting.Testing`. The package works with any Aspire 13.x.
 
 ### Persistence
 

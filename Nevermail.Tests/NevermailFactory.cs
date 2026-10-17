@@ -22,6 +22,7 @@ public sealed class NevermailFactory : WebApplicationFactory<Program>
         ["Providers:SendGrid:ApiKey"] = ApiKey,
         ["Providers:Brevo:ApiKey"] = ApiKey,
         ["Providers:Mandrill:ApiKey"] = ApiKey,
+        ["Providers:AhaSend:ApiKey"] = ApiKey,
         // Random free port, so parallel test hosts don't collide.
         ["Smtp:Port"] = "0",
     };

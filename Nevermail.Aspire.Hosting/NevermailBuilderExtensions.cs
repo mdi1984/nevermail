@@ -71,6 +71,10 @@ public static class NevermailBuilderExtensions
     public static IResourceBuilder<NevermailResource> WithMandrillApiKey(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> apiKey) =>
         builder.WithEnvironment("Providers__Mandrill__ApiKey", apiKey);
 
+    /// <summary>Requires this AhaSend API key (<c>Authorization: Bearer</c>). Without it, any key is accepted.</summary>
+    public static IResourceBuilder<NevermailResource> WithAhaSendApiKey(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> apiKey) =>
+        builder.WithEnvironment("Providers__AhaSend__ApiKey", apiKey);
+
     /// <summary>Requires SMTP clients to authenticate with these credentials. Without them, any (or no) credentials are accepted.</summary>
     public static IResourceBuilder<NevermailResource> WithSmtpCredentials(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> userName, IResourceBuilder<ParameterResource> password) =>
         builder.WithEnvironment("Smtp__Username", userName).WithEnvironment("Smtp__Password", password);

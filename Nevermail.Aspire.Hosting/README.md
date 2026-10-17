@@ -1,6 +1,6 @@
 # Nevermail.Aspire.Hosting
 
-[.NET Aspire](https://aspire.dev) hosting integration for [Nevermail](https://github.com/mdi1984/nevermail): a local mock for **SendGrid**, **Brevo**, **Mailchimp Transactional (Mandrill)**, **Azure Communication Services Email** and **SMTP**. Every mail your app sends ends up in a web UI, and nothing leaves your machine.
+[.NET Aspire](https://aspire.dev) hosting integration for [Nevermail](https://github.com/mdi1984/nevermail): a local mock for **SendGrid**, **Brevo**, **Mailchimp Transactional (Mandrill)**, **Azure Communication Services Email**, **AhaSend** and **SMTP**. Every mail your app sends ends up in a web UI, and nothing leaves your machine.
 
 Works with any Aspire 13.x.
 
@@ -30,7 +30,7 @@ Endpoint=http://localhost:54321;SmtpHost=localhost;SmtpPort=54322;AccessKey=bmV2
 
 | Key | Meaning |
 |---|---|
-| `Endpoint` | Base address of all HTTP APIs: SendGrid `{Endpoint}`, Brevo `{Endpoint}/v3`, Mandrill `{Endpoint}/api/1.3/` |
+| `Endpoint` | Base address of all HTTP APIs: SendGrid `{Endpoint}`, Brevo `{Endpoint}/v3`, Mandrill `{Endpoint}/api/1.3/`, AhaSend `{Endpoint}` |
 | `SmtpHost`, `SmtpPort` | Plain SMTP, no TLS |
 | `AccessKey` | A dummy key, so the whole string is also a valid Azure Communication Services connection string |
 
@@ -50,7 +50,7 @@ var mail = builder.AddNevermail("mail", httpPort: 5110, smtpPort: 1025) // fixed
 | Method | Effect |
 |---|---|
 | `WithDataVolume()` / `WithDataBindMount(path)` | Persist mails |
-| `WithSendGridApiKey(param)`, `WithBrevoApiKey(param)`, `WithMandrillApiKey(param)` | Require a specific API key. Without one, any key is accepted |
+| `WithSendGridApiKey(param)`, `WithBrevoApiKey(param)`, `WithMandrillApiKey(param)`, `WithAhaSendApiKey(param)` | Require a specific API key. Without one, any key is accepted |
 | `WithSmtpCredentials(user, password)` | Require SMTP authentication |
 | `WithFaults(rate, statusCode, delay)` | Fail or slow down sends on purpose |
 | `WithMaxMessages(n)` | Keep at most `n` mails |
@@ -142,6 +142,26 @@ var operation = await email.SendAsync(WaitUntil.Completed, "shop@example.com", "
 ```
 
 Use a connection string, not `DefaultAzureCredential`: the Azure SDK only sends Entra ID tokens over `https`, and Nevermail serves `http`.
+
+**AhaSend** (API v2 over `HttpClient`, there's no .NET SDK)
+
+```csharp
+// Any account UUID works against Nevermail.
+builder.Services.AddHttpClient("ahasend", client =>
+{
+    client.BaseAddress = new Uri($"{endpoint}/");
+    client.DefaultRequestHeaders.Authorization = new("Bearer", "dev");
+});
+
+// later: var http = httpClientFactory.CreateClient("ahasend");
+await http.PostAsJsonAsync($"v2/accounts/{accountId}/messages", new
+{
+    from = new { email = "shop@example.com" },
+    recipients = new[] { new { email = "alice@example.com" } },
+    subject = "Welcome",
+    html_content = "<p>Hi!</p>",
+});
+```
 
 **SMTP** (MailKit)
 

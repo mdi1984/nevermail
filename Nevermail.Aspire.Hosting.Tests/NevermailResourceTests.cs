@@ -115,15 +115,18 @@ public sealed class NevermailResourceTests
     {
         var (app, mail) = Create();
         app.Configuration["Parameters:sendgrid-key"] = "sg-secret";
+        app.Configuration["Parameters:ahasend-key"] = "aha-secret";
         app.Configuration["Parameters:smtp-user"] = "user";
         app.Configuration["Parameters:smtp-password"] = "pw";
 
         mail.WithSendGridApiKey(app.AddParameter("sendgrid-key", secret: true))
+            .WithAhaSendApiKey(app.AddParameter("ahasend-key", secret: true))
             .WithSmtpCredentials(app.AddParameter("smtp-user"), app.AddParameter("smtp-password", secret: true))
             .WithMaxMessages(50);
 
         var env = await EnvironmentAsync(mail.Resource);
         Assert.Equal("sg-secret", env["Providers__SendGrid__ApiKey"]);
+        Assert.Equal("aha-secret", env["Providers__AhaSend__ApiKey"]);
         Assert.Equal("user", env["Smtp__Username"]);
         Assert.Equal("pw", env["Smtp__Password"]);
         Assert.Equal("50", env["Storage__MaxMessages"]);

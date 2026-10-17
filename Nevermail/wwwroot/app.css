@@ -24,6 +24,7 @@
     --p-brevo: #0b996e;
     --p-mandrill: #c2410c;
     --p-azure: #0e7490;
+    --p-ahasend: #be185d;
     --p-smtp: #7c3aed;
 
     color-scheme: light;
@@ -53,6 +54,7 @@
         --p-brevo: #34d399;
         --p-mandrill: #fb923c;
         --p-azure: #22d3ee;
+        --p-ahasend: #f472b6;
         --p-smtp: #a78bfa;
         color-scheme: dark;
     }
@@ -81,6 +83,7 @@
     --p-brevo: #34d399;
     --p-mandrill: #fb923c;
     --p-azure: #22d3ee;
+    --p-ahasend: #f472b6;
     --p-smtp: #a78bfa;
     color-scheme: dark;
 }
@@ -270,6 +273,7 @@ select {
 .badge.provider[data-provider="brevo"] { --pc: var(--p-brevo); }
 .badge.provider[data-provider="mandrill"] { --pc: var(--p-mandrill); }
 .badge.provider[data-provider="azure"] { --pc: var(--p-azure); }
+.badge.provider[data-provider="ahasend"] { --pc: var(--p-ahasend); }
 .badge.provider[data-provider="smtp"] { --pc: var(--p-smtp); }
 .badge.warn { color: var(--warn); background: var(--warn-soft); }
 

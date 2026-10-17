@@ -9,7 +9,7 @@ SMTP_PORT="${SMTP_PORT:-11025}"
 BASE="http://localhost:$PORT"
 NAME="nevermail-smoke-$$"
 
-docker run -d --rm --name "$NAME" -p "$PORT:8080" -p "$SMTP_PORT:1025" -e Providers__SendGrid__ApiKey=smoke -e Providers__Brevo__ApiKey=smoke -e Providers__Mandrill__ApiKey=smoke -e Storage__Path=/tmp "$IMAGE" > /dev/null
+docker run -d --rm --name "$NAME" -p "$PORT:8080" -p "$SMTP_PORT:1025" -e Providers__SendGrid__ApiKey=smoke -e Providers__Brevo__ApiKey=smoke -e Providers__Mandrill__ApiKey=smoke -e Providers__AhaSend__ApiKey=smoke -e Storage__Path=/tmp "$IMAGE" > /dev/null
 trap 'docker logs "$NAME" 2>&1 | tail -20; docker stop "$NAME" > /dev/null' EXIT
 
 fail() { echo "FAIL: $*"; exit 1; }
@@ -55,6 +55,15 @@ OP_LOCATION=$(curl -sf -D - -o /dev/null -X POST "$BASE/emails:send?api-version=
 [ -n "$OP_LOCATION" ] || fail "acs send"
 curl -sf "$OP_LOCATION" -H "$ACS_AUTH" -H 'x-ms-date: now' -H 'x-ms-content-sha256: x' | grep -q '"status":"Succeeded"' || fail "acs poll"
 curl -sf "$BASE/api/mails?provider=azure" | grep -q '"subject":"ACS smoke"' || fail "acs mail not stored"
+
+# AhaSend, including substitutions (hand-written JSON merging) and an idempotent replay
+AHA_URL="$BASE/v2/accounts/4cdd7bc5-1e8d-4b3c-9c1a-6b5f8e2d7a10/messages"
+AHA='{"from":{"email":"from@example.com"},"recipients":[{"email":"a@example.com","substitutions":{"name":"Ann"}}],"subject":"Aha {{ name }}","html_content":"<p>x</p>","substitutions":{"name":"you","x":1},"attachments":[{"data":"hello","content_type":"text/plain","file_name":"a.txt"}]}'
+[ "$(status -X POST "$AHA_URL" -H 'Content-Type: application/json' -d "$AHA")" = "401" ] || fail "ahasend missing key not rejected"
+[ "$(status -X POST "$AHA_URL" -H 'Authorization: Bearer smoke' -H 'Content-Type: application/json' -d '{"recipients":[]}')" = "400" ] || fail "ahasend invalid request not rejected"
+curl -sf -X POST "$AHA_URL" -H 'Authorization: Bearer smoke' -H 'Idempotency-Key: smoke' -H 'Content-Type: application/json' -d "$AHA" | grep -q '"status":"queued"' || fail "ahasend send"
+curl -sf -D - -o /dev/null -X POST "$AHA_URL" -H 'Authorization: Bearer smoke' -H 'Idempotency-Key: smoke' -H 'Content-Type: application/json' -d "$AHA" | grep -qi '^idempotent-replayed: true' || fail "ahasend idempotent replay"
+[ "$(curl -sf "$BASE/api/mails?provider=ahasend" | grep -o '"subject":"Aha Ann"' | wc -l)" = "1" ] || fail "ahasend substitutions or replay"
 
 # SMTP (MimeKit parsing, legacy charsets)
 printf 'From: smoke@example.com\r\nTo: to@example.com\r\nSubject: =?windows-1252?Q?SMTP_=80?=\r\nContent-Type: text/plain\r\n\r\nhello via smtp\r\n' > "/tmp/$NAME.eml"

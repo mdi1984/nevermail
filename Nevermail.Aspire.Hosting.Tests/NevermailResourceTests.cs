@@ -77,7 +77,7 @@ public sealed class NevermailResourceTests
     [InlineData(NevermailProvider.SendGrid, "Endpoint={mail.bindings.http.url};ApiKey=nevermail")]
     [InlineData(NevermailProvider.Brevo, "Endpoint={mail.bindings.http.url}/v3;ApiKey=nevermail")]
     [InlineData(NevermailProvider.Mandrill, "Endpoint={mail.bindings.http.url}/api/1.3/;ApiKey=nevermail")]
-    [InlineData(NevermailProvider.AzureCommunicationServices, "endpoint={mail.bindings.http.url}/;accesskey=bmV2ZXJtYWls")]
+    [InlineData(NevermailProvider.AzureCommunicationServices, "Endpoint={mail.bindings.http.url}/;AccessKey=bmV2ZXJtYWls")]
     [InlineData(NevermailProvider.AhaSend, "Endpoint={mail.bindings.http.url};ApiKey=nevermail;AccountId=00000000-0000-0000-0000-000000000000")]
     [InlineData(NevermailProvider.Smtp, "Endpoint=smtp://{mail.bindings.smtp.host}:{mail.bindings.smtp.port}")]
     public void ConnectionString_HasTheProvidersShape(NevermailProvider provider, string expected)
@@ -109,6 +109,53 @@ public sealed class NevermailResourceTests
 
         Assert.Equal("Endpoint=smtp://{mail.bindings.smtp.host}:{mail.bindings.smtp.port};Username={smtp-user.value};Password={smtp-password.value}",
             mail.Resource.ConnectionStringExpression.ValueExpression);
+    }
+
+    [Fact]
+    public void ConnectionProperties_HoldTheValuesOneByOne()
+    {
+        var app = DistributedApplication.CreateBuilder();
+        var mail = app.AddNevermail("mail", NevermailProvider.Brevo)
+            .WithBrevoApiKey(app.AddParameter("brevo-key", secret: true));
+
+        var properties = mail.Resource.GetConnectionProperties().ToDictionary(p => p.Key, p => p.Value.ValueExpression);
+
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["Endpoint"] = "{mail.bindings.http.url}/v3",
+            ["ApiKey"] = "{brevo-key.value}",
+        }, properties);
+    }
+
+    [Fact]
+    public void SmtpConnectionProperties_SplitHostAndPort()
+    {
+        var app = DistributedApplication.CreateBuilder();
+        var mail = app.AddNevermail("mail", NevermailProvider.Smtp);
+
+        Assert.Equal("{mail.bindings.smtp.host}", mail.Resource.GetConnectionProperty("Host").ValueExpression);
+        Assert.Equal("{mail.bindings.smtp.port}", mail.Resource.GetConnectionProperty("Port").ValueExpression);
+        Assert.DoesNotContain(mail.Resource.GetConnectionProperties(), p => p.Key == "Username");
+    }
+
+    [Fact]
+    public async Task WithReference_SetsConnectionStringAndProperties()
+    {
+        var app = DistributedApplication.CreateBuilder();
+        var mail = app.AddNevermail("mail", NevermailProvider.AhaSend);
+        var api = app.AddContainer("api", "api").WithReference(mail);
+
+        var context = new EnvironmentCallbackContext(new DistributedApplicationExecutionContext(DistributedApplicationOperation.Publish));
+        foreach (var callback in api.Resource.Annotations.OfType<EnvironmentCallbackAnnotation>())
+        {
+            await callback.Callback(context);
+        }
+        var env = context.EnvironmentVariables.ToDictionary(e => e.Key, e => ((IManifestExpressionProvider)e.Value).ValueExpression);
+
+        Assert.Equal("{mail.connectionString}", env["ConnectionStrings__mail"]);
+        Assert.Equal("{mail.bindings.http.url}", env["MAIL_ENDPOINT"]);
+        Assert.Equal("nevermail", env["MAIL_APIKEY"]);
+        Assert.Equal("00000000-0000-0000-0000-000000000000", env["MAIL_ACCOUNTID"]);
     }
 
     [Fact]

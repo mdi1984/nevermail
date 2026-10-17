@@ -5,7 +5,8 @@ namespace Aspire.Hosting.ApplicationModel;
 /// Azure Communication Services Email and AhaSend, an SMTP server, and a web UI showing every captured mail.
 /// </summary>
 /// <remarks>
-/// With a <see cref="Provider"/>, the connection string has the shape that provider's client needs, see <see cref="NevermailProvider"/>.
+/// With a <see cref="Provider"/>, the connection string has the shape that provider's client needs, see <see cref="NevermailProvider"/>,
+/// and <see cref="GetConnectionProperties"/> has its values one by one.
 /// Without one, it has the form <c>Endpoint=http://host:port;SmtpHost=host;SmtpPort=port;AccessKey=...</c>:
 /// <c>Endpoint</c> is the base address for all HTTP APIs (SendGrid host, Brevo <c>/v3</c>, Mandrill <c>/api/1.3/</c>, AhaSend host),
 /// and <c>AccessKey</c> is a dummy key, so the string also works as an Azure Communication Services connection string.
@@ -51,56 +52,83 @@ public sealed class NevermailResource(string name, NevermailProvider? provider) 
     {
         get
         {
-            var url = HttpEndpoint.Property(EndpointProperty.Url);
+            // The connection string is the properties joined as Key=Value, except that SMTP's Host and Port go in as one smtp:// Endpoint.
             var builder = new ReferenceExpressionBuilder();
-            switch (Provider)
+            foreach (var (key, value) in GetConnectionProperties())
             {
-                case null:
-                    builder.Append($"Endpoint={url};SmtpHost={SmtpEndpoint.Property(EndpointProperty.Host)};SmtpPort={SmtpEndpoint.Property(EndpointProperty.Port)};AccessKey={AccessKey}");
-                    break;
-                case NevermailProvider.SendGrid:
-                    builder.Append($"Endpoint={url}");
-                    AppendApiKey(builder);
-                    break;
-                case NevermailProvider.Brevo:
-                    builder.Append($"Endpoint={url}/v3");
-                    AppendApiKey(builder);
-                    break;
-                case NevermailProvider.Mandrill:
-                    builder.Append($"Endpoint={url}/api/1.3/");
-                    AppendApiKey(builder);
-                    break;
-                case NevermailProvider.AzureCommunicationServices:
-                    builder.Append($"endpoint={url}/;accesskey={AccessKey}");
-                    break;
-                case NevermailProvider.AhaSend:
-                    builder.Append($"Endpoint={url}");
-                    AppendApiKey(builder);
-                    builder.Append($";AccountId={AhaSendAccountId}");
-                    break;
-                case NevermailProvider.Smtp:
-                    builder.Append($"Endpoint=smtp://{SmtpEndpoint.Property(EndpointProperty.HostAndPort)}");
-                    if (SmtpUserName is not null && SmtpPassword is not null)
-                    {
-                        builder.Append($";Username={SmtpUserName};Password={SmtpPassword}");
-                    }
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unknown provider {Provider}.");
+                if (Provider == NevermailProvider.Smtp && key is "Host" or "Port")
+                {
+                    continue;
+                }
+                if (!builder.IsEmpty)
+                {
+                    builder.AppendLiteral(";");
+                }
+                builder.AppendLiteral($"{key}=");
+                builder.AppendFormatted(value);
             }
             return builder.Build();
         }
     }
 
-    private void AppendApiKey(ReferenceExpressionBuilder builder)
+    /// <summary>
+    /// The values in the connection string, one by one, so the app host can pass them to a project's own settings:
+    /// <c>WithEnvironment("SendGrid__ApiKey", mail.Resource.GetConnectionProperty("ApiKey"))</c>.
+    /// <c>WithReference</c> also sets each one as <c>{NAME}_{KEY}</c>, e.g. <c>MAIL_APIKEY</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>Endpoint</c> and <c>ApiKey</c> for SendGrid, Brevo and Mandrill, plus <c>AccountId</c> for AhaSend.
+    /// <c>Endpoint</c> and <c>AccessKey</c> for Azure Communication Services.
+    /// <c>Endpoint</c> (<c>smtp://host:port</c>), <c>Host</c> and <c>Port</c> for SMTP, plus <c>Username</c> and <c>Password</c> when credentials are required.
+    /// <c>Endpoint</c>, <c>SmtpHost</c>, <c>SmtpPort</c> and <c>AccessKey</c> without a provider.
+    /// </remarks>
+    public IEnumerable<KeyValuePair<string, ReferenceExpression>> GetConnectionProperties()
     {
-        if (ApiKey is not null)
+        var url = HttpEndpoint.Property(EndpointProperty.Url);
+        switch (Provider)
         {
-            builder.Append($";ApiKey={ApiKey}");
-        }
-        else
-        {
-            builder.AppendLiteral($";ApiKey={DefaultApiKey}");
+            case null:
+                yield return new("Endpoint", ReferenceExpression.Create($"{url}"));
+                yield return new("SmtpHost", ReferenceExpression.Create($"{SmtpEndpoint.Property(EndpointProperty.Host)}"));
+                yield return new("SmtpPort", ReferenceExpression.Create($"{SmtpEndpoint.Property(EndpointProperty.Port)}"));
+                yield return new("AccessKey", ReferenceExpression.Create($"{AccessKey}"));
+                break;
+            case NevermailProvider.SendGrid:
+                yield return new("Endpoint", ReferenceExpression.Create($"{url}"));
+                yield return new("ApiKey", ApiKeyExpression);
+                break;
+            case NevermailProvider.Brevo:
+                yield return new("Endpoint", ReferenceExpression.Create($"{url}/v3"));
+                yield return new("ApiKey", ApiKeyExpression);
+                break;
+            case NevermailProvider.Mandrill:
+                yield return new("Endpoint", ReferenceExpression.Create($"{url}/api/1.3/"));
+                yield return new("ApiKey", ApiKeyExpression);
+                break;
+            case NevermailProvider.AzureCommunicationServices:
+                yield return new("Endpoint", ReferenceExpression.Create($"{url}/"));
+                yield return new("AccessKey", ReferenceExpression.Create($"{AccessKey}"));
+                break;
+            case NevermailProvider.AhaSend:
+                yield return new("Endpoint", ReferenceExpression.Create($"{url}"));
+                yield return new("ApiKey", ApiKeyExpression);
+                yield return new("AccountId", ReferenceExpression.Create($"{AhaSendAccountId}"));
+                break;
+            case NevermailProvider.Smtp:
+                yield return new("Endpoint", ReferenceExpression.Create($"smtp://{SmtpEndpoint.Property(EndpointProperty.HostAndPort)}"));
+                yield return new("Host", ReferenceExpression.Create($"{SmtpEndpoint.Property(EndpointProperty.Host)}"));
+                yield return new("Port", ReferenceExpression.Create($"{SmtpEndpoint.Property(EndpointProperty.Port)}"));
+                if (SmtpUserName is not null && SmtpPassword is not null)
+                {
+                    yield return new("Username", ReferenceExpression.Create($"{SmtpUserName}"));
+                    yield return new("Password", ReferenceExpression.Create($"{SmtpPassword}"));
+                }
+                break;
+            default:
+                throw new InvalidOperationException($"Unknown provider {Provider}.");
         }
     }
+
+    private ReferenceExpression ApiKeyExpression =>
+        ApiKey is not null ? ReferenceExpression.Create($"{ApiKey}") : ReferenceExpression.Create($"{DefaultApiKey}");
 }

@@ -13,7 +13,7 @@ public enum NevermailProvider
     Mandrill,
 
     /// <summary>
-    /// Azure Communication Services Email: <c>endpoint=http://host:port/;accesskey=...</c>,
+    /// Azure Communication Services Email: <c>Endpoint=http://host:port/;AccessKey=...</c>,
     /// a regular ACS connection string for <c>new EmailClient(connectionString)</c>.
     /// </summary>
     AzureCommunicationServices,

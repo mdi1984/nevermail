@@ -73,6 +73,52 @@ public sealed class NevermailResourceTests
         Assert.Equal("Endpoint={mail.bindings.http.url};SmtpHost={mail.bindings.smtp.host};SmtpPort={mail.bindings.smtp.port};AccessKey=bmV2ZXJtYWls", expression);
     }
 
+    [Theory]
+    [InlineData(NevermailProvider.SendGrid, "Endpoint={mail.bindings.http.url};ApiKey=nevermail")]
+    [InlineData(NevermailProvider.Brevo, "Endpoint={mail.bindings.http.url}/v3;ApiKey=nevermail")]
+    [InlineData(NevermailProvider.Mandrill, "Endpoint={mail.bindings.http.url}/api/1.3/;ApiKey=nevermail")]
+    [InlineData(NevermailProvider.AzureCommunicationServices, "endpoint={mail.bindings.http.url}/;accesskey=bmV2ZXJtYWls")]
+    [InlineData(NevermailProvider.AhaSend, "Endpoint={mail.bindings.http.url};ApiKey=nevermail;AccountId=00000000-0000-0000-0000-000000000000")]
+    [InlineData(NevermailProvider.Smtp, "Endpoint=smtp://{mail.bindings.smtp.host}:{mail.bindings.smtp.port}")]
+    public void ConnectionString_HasTheProvidersShape(NevermailProvider provider, string expected)
+    {
+        var app = DistributedApplication.CreateBuilder();
+        var mail = app.AddNevermail("mail", provider);
+
+        Assert.Equal(provider, mail.Resource.Provider);
+        Assert.Equal(expected, mail.Resource.ConnectionStringExpression.ValueExpression);
+    }
+
+    [Fact]
+    public void ConnectionString_CarriesTheRequiredApiKeyOfItsProvider()
+    {
+        var app = DistributedApplication.CreateBuilder();
+        var mail = app.AddNevermail("mail", NevermailProvider.SendGrid)
+            .WithBrevoApiKey(app.AddParameter("brevo-key", secret: true))
+            .WithSendGridApiKey(app.AddParameter("sendgrid-key", secret: true));
+
+        Assert.Equal("Endpoint={mail.bindings.http.url};ApiKey={sendgrid-key.value}", mail.Resource.ConnectionStringExpression.ValueExpression);
+    }
+
+    [Fact]
+    public void SmtpConnectionString_CarriesCredentials()
+    {
+        var app = DistributedApplication.CreateBuilder();
+        var mail = app.AddNevermail("mail", NevermailProvider.Smtp)
+            .WithSmtpCredentials(app.AddParameter("smtp-user"), app.AddParameter("smtp-password", secret: true));
+
+        Assert.Equal("Endpoint=smtp://{mail.bindings.smtp.host}:{mail.bindings.smtp.port};Username={smtp-user.value};Password={smtp-password.value}",
+            mail.Resource.ConnectionStringExpression.ValueExpression);
+    }
+
+    [Fact]
+    public void AddNevermail_RejectsUnknownProvider()
+    {
+        var app = DistributedApplication.CreateBuilder();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => app.AddNevermail("mail", (NevermailProvider)42));
+    }
+
     [Fact]
     public async Task WithDataVolume_MountsAndEnablesFileStorage()
     {

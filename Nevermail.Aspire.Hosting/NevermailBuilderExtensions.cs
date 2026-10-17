@@ -19,18 +19,40 @@ public static class NevermailBuilderExtensions
             .FirstOrDefault(a => a.Key == "NevermailImageTag")?.Value is { Length: > 0 } tag ? tag : "latest";
 
     /// <summary>
-    /// Adds a Nevermail container. Reference it from a project with <c>WithReference</c> to get the connection string,
-    /// or pass single endpoints with <c>WithEnvironment("SendGrid__Host", nevermail.Resource.HttpEndpoint)</c>.
+    /// Adds a Nevermail container. Reference it from a project with <c>WithReference</c> to get a connection string
+    /// that covers every provider: <c>Endpoint=...;SmtpHost=...;SmtpPort=...;AccessKey=...</c>.
+    /// Use the overload with a <see cref="NevermailProvider"/> to get the shape one provider's client needs.
     /// </summary>
     /// <param name="builder">The app host builder.</param>
     /// <param name="name">Resource name.</param>
     /// <param name="httpPort">Host port for the HTTP APIs and web UI. Random if not set.</param>
     /// <param name="smtpPort">Host port for SMTP. Random if not set.</param>
-    public static IResourceBuilder<NevermailResource> AddNevermail(this IDistributedApplicationBuilder builder, [ResourceName] string name, int? httpPort = null, int? smtpPort = null)
+    public static IResourceBuilder<NevermailResource> AddNevermail(this IDistributedApplicationBuilder builder, [ResourceName] string name, int? httpPort = null, int? smtpPort = null) =>
+        AddNevermail(builder, new NevermailResource(name), httpPort, smtpPort);
+
+    /// <summary>
+    /// Adds a Nevermail container whose connection string has the shape <paramref name="provider"/>'s client needs,
+    /// e.g. <c>Endpoint=http://localhost:54321;ApiKey=...</c> for SendGrid. See <see cref="NevermailProvider"/> for every shape.
+    /// </summary>
+    /// <param name="builder">The app host builder.</param>
+    /// <param name="name">Resource name.</param>
+    /// <param name="provider">The provider your project talks to.</param>
+    /// <param name="httpPort">Host port for the HTTP APIs and web UI. Random if not set.</param>
+    /// <param name="smtpPort">Host port for SMTP. Random if not set.</param>
+    public static IResourceBuilder<NevermailResource> AddNevermail(this IDistributedApplicationBuilder builder, [ResourceName] string name, NevermailProvider provider, int? httpPort = null, int? smtpPort = null)
+    {
+        if (!Enum.IsDefined(provider))
+        {
+            throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown provider.");
+        }
+        return AddNevermail(builder, new NevermailResource(name, provider), httpPort, smtpPort);
+    }
+
+    private static IResourceBuilder<NevermailResource> AddNevermail(IDistributedApplicationBuilder builder, NevermailResource resource, int? httpPort, int? smtpPort)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.AddResource(new NevermailResource(name))
+        return builder.AddResource(resource)
             .WithImage(Image, DefaultImageTag)
             .WithImageRegistry(Registry)
             .WithHttpEndpoint(port: httpPort, targetPort: HttpTargetPort, name: NevermailResource.HttpEndpointName)
@@ -59,25 +81,32 @@ public static class NevermailBuilderExtensions
             .WithEnvironment("Storage__Path", DataPath);
     }
 
-    /// <summary>Requires this SendGrid API key. Without it, any key is accepted.</summary>
+    /// <summary>Requires this SendGrid API key. Without it, any key is accepted. Also goes into a SendGrid connection string.</summary>
     public static IResourceBuilder<NevermailResource> WithSendGridApiKey(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> apiKey) =>
-        builder.WithEnvironment("Providers__SendGrid__ApiKey", apiKey);
+        WithApiKey(builder, NevermailProvider.SendGrid, "Providers__SendGrid__ApiKey", apiKey);
 
-    /// <summary>Requires this Brevo API key. Without it, any key is accepted.</summary>
+    /// <summary>Requires this Brevo API key. Without it, any key is accepted. Also goes into a Brevo connection string.</summary>
     public static IResourceBuilder<NevermailResource> WithBrevoApiKey(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> apiKey) =>
-        builder.WithEnvironment("Providers__Brevo__ApiKey", apiKey);
+        WithApiKey(builder, NevermailProvider.Brevo, "Providers__Brevo__ApiKey", apiKey);
 
-    /// <summary>Requires this Mailchimp Transactional (Mandrill) API key. Without it, any key is accepted.</summary>
+    /// <summary>Requires this Mailchimp Transactional (Mandrill) API key. Without it, any key is accepted. Also goes into a Mailchimp Transactional (Mandrill) connection string.</summary>
     public static IResourceBuilder<NevermailResource> WithMandrillApiKey(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> apiKey) =>
-        builder.WithEnvironment("Providers__Mandrill__ApiKey", apiKey);
+        WithApiKey(builder, NevermailProvider.Mandrill, "Providers__Mandrill__ApiKey", apiKey);
 
-    /// <summary>Requires this AhaSend API key (<c>Authorization: Bearer</c>). Without it, any key is accepted.</summary>
+    /// <summary>Requires this AhaSend API key (<c>Authorization: Bearer</c>). Without it, any key is accepted. Also goes into an AhaSend connection string.</summary>
     public static IResourceBuilder<NevermailResource> WithAhaSendApiKey(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> apiKey) =>
-        builder.WithEnvironment("Providers__AhaSend__ApiKey", apiKey);
+        WithApiKey(builder, NevermailProvider.AhaSend, "Providers__AhaSend__ApiKey", apiKey);
 
     /// <summary>Requires SMTP clients to authenticate with these credentials. Without them, any (or no) credentials are accepted.</summary>
-    public static IResourceBuilder<NevermailResource> WithSmtpCredentials(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> userName, IResourceBuilder<ParameterResource> password) =>
-        builder.WithEnvironment("Smtp__Username", userName).WithEnvironment("Smtp__Password", password);
+    public static IResourceBuilder<NevermailResource> WithSmtpCredentials(this IResourceBuilder<NevermailResource> builder, IResourceBuilder<ParameterResource> userName, IResourceBuilder<ParameterResource> password)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(userName);
+        ArgumentNullException.ThrowIfNull(password);
+        builder.Resource.SmtpUserName = userName.Resource;
+        builder.Resource.SmtpPassword = password.Resource;
+        return builder.WithEnvironment("Smtp__Username", userName).WithEnvironment("Smtp__Password", password);
+    }
 
     /// <summary>
     /// Makes a share of all sends fail on purpose, to exercise retries and error handling.
@@ -107,5 +136,17 @@ public static class NevermailBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentOutOfRangeException.ThrowIfNegative(maxMessages);
         return builder.WithEnvironment("Storage__MaxMessages", maxMessages.ToString(CultureInfo.InvariantCulture));
+    }
+
+    // Requires the key in Nevermail and, when the resource is shaped for this provider, puts it into the connection string.
+    private static IResourceBuilder<NevermailResource> WithApiKey(IResourceBuilder<NevermailResource> builder, NevermailProvider provider, string variable, IResourceBuilder<ParameterResource> apiKey)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(apiKey);
+        if (builder.Resource.Provider == provider)
+        {
+            builder.Resource.ApiKey = apiKey.Resource;
+        }
+        return builder.WithEnvironment(variable, apiKey);
     }
 }

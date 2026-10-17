@@ -2,7 +2,7 @@
 
 *Your emails, never delivered.*
 
-**A fake email provider for local development and tests.** Point your app at Nevermail instead of SendGrid, Brevo, Mailchimp Transactional, Azure Communication Services or an SMTP server. Your code sends mail exactly as it would in production; Nevermail accepts it, shows it in a web inbox, and never delivers anything.
+**A fake email provider for local development and tests.** Point your app at Nevermail instead of SendGrid, Brevo, Mailchimp Transactional, Azure Communication Services, AhaSend or an SMTP server. Your code sends mail exactly as it would in production; Nevermail accepts it, shows it in a web inbox, and never delivers anything.
 
 ![Nevermail inbox showing captured mails from SendGrid, Azure, SMTP, Mandrill and Brevo](docs/screenshot.png)
 
@@ -12,7 +12,7 @@ docker run -d -p 5110:8080 -p 1025:1025 mdi1984/nevermail
 
 Open [http://localhost:5110](http://localhost:5110) and send your first mail.
 
-- **Drop-in APIs** for SendGrid, Brevo, Mailchimp Transactional (Mandrill), Azure Communication Services Email, and SMTP. Requests are validated like the real service, so what fails in production fails here too.
+- **Drop-in APIs** for SendGrid, Brevo, Mailchimp Transactional (Mandrill), Azure Communication Services Email, AhaSend, and SMTP. Requests are validated like the real service, so what fails in production fails here too.
 - **Web inbox** with live updates, search, HTML preview at desktop/tablet/mobile widths, headers, attachments and `.eml` download.
 - **Built for tests**: an [inspection API](#inspection-api) that waits for a mail instead of sleeping, and [fault injection](#fault-injection) for rate limits, outages and bounces.
 - **Tiny**: a ~16 MB NativeAOT image for `linux/amd64` and `linux/arm64`, with a [.NET Aspire integration](#net-aspire).
@@ -29,6 +29,7 @@ Point your existing client at Nevermail. Any API key works unless you [configure
 | Brevo | `http://localhost:5110/v3` | `api-key: <key>` header |
 | Mailchimp Transactional | `http://localhost:5110/api/1.3/` (any `1.x` works, with or without `.json` suffix) | `key` in the request body |
 | Azure Communication Services | connection string `endpoint=http://localhost:5110/;accesskey=bmV2ZXJtYWls` | access key (any base64 value) |
+| AhaSend | `http://localhost:5110` instead of `https://api.ahasend.com` (API v2, any account UUID) | `Authorization: Bearer <key>` |
 | SMTP | `localhost:1025`, no TLS | optional |
 
 ```csharp
@@ -67,25 +68,313 @@ curl -i http://localhost:5110/v3/mail/send   -H 'Authorization: Bearer anything'
 dotnet add package Nevermail.Aspire.Hosting
 ```
 
+Tell `AddNevermail` which provider your project uses, then hand its connection properties to the settings your project already has. The project binds them like any other configuration and never knows it's talking to Nevermail:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var api = builder.AddProject<Projects.Api>("api");
+
+if (builder.ExecutionContext.IsRunMode)
+{
+    // Locally: Nevermail
+    var mail = builder.AddNevermail("mail", NevermailProvider.SendGrid);
+    api.WithEnvironment("SendGrid__Host", mail.Resource.GetConnectionProperty("Endpoint"))
+       .WithEnvironment("SendGrid__ApiKey", mail.Resource.GetConnectionProperty("ApiKey"))
+       .WaitFor(mail);
+}
+else
+{
+    // Deployed: the real provider. Without SendGrid__Host the SDK uses https://api.sendgrid.com.
+    api.WithEnvironment("SendGrid__ApiKey", builder.AddParameter("sendgrid-key", secret: true));
+}
+
+builder.Build().Run();
+```
+
+| `NevermailProvider` | Connection properties |
+|---|---|
+| `SendGrid` | `Endpoint` (`http://localhost:54321`), `ApiKey` |
+| `Brevo` | `Endpoint` (`http://localhost:54321/v3`), `ApiKey` |
+| `Mandrill` | `Endpoint` (`http://localhost:54321/api/1.3/`), `ApiKey` |
+| `AzureCommunicationServices` | `Endpoint` (`http://localhost:54321/`), `AccessKey` |
+| `AhaSend` | `Endpoint` (`http://localhost:54321`), `ApiKey`, `AccountId` (any UUID works) |
+| `Smtp` | `Host`, `Port`, `Endpoint` (`smtp://localhost:54322`), and `Username`, `Password` with `WithSmtpCredentials(...)` |
+
+`ApiKey` is `nevermail`, since any key is accepted, unless you require one with `WithSendGridApiKey(...)` (or the Brevo, Mandrill or AhaSend variant). Pass the property itself to `WithEnvironment`, not its `.ValueExpression`: that's the manifest placeholder (`{sendgrid-key.value}`), not the value. `WithReference(mail)` also works. It sets the connection string (`ConnectionStrings__mail`, the properties as `Key=Value;…`) and every property as `MAIL_ENDPOINT`, `MAIL_APIKEY` and so on.
+
+The samples below show the run-mode `WithEnvironment` lines and the Api project's `Program.cs`, with an endpoint that sends a welcome mail. The settings' defaults are the real provider's addresses, used when deployed.
+
+#### SendGrid
+
+[`SendGrid.Extensions.DependencyInjection`](https://www.nuget.org/packages/SendGrid.Extensions.DependencyInjection). `SendGridClientOptions` has `Host` and `ApiKey`, so the section binds straight onto it.
+
 ```csharp
 // App host
+api.WithEnvironment("SendGrid__Host", mail.Resource.GetConnectionProperty("Endpoint"))
+   .WithEnvironment("SendGrid__ApiKey", mail.Resource.GetConnectionProperty("ApiKey"));
+```
+
+```csharp
+using SendGrid;
+using SendGrid.Extensions.DependencyInjection;
+using SendGrid.Helpers.Mail;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddSendGrid(options => builder.Configuration.GetSection("SendGrid").Bind(options));
+
+var app = builder.Build();
+
+app.MapPost("/welcome", async (string to, ISendGridClient sendGrid) =>
+{
+    var message = MailHelper.CreateSingleEmail(new EmailAddress("shop@example.com"), new EmailAddress(to), "Welcome", "Hi!", "<p>Hi!</p>");
+    var response = await sendGrid.SendEmailAsync(message);
+    return response.IsSuccessStatusCode ? Results.Ok() : Results.Problem(await response.Body.ReadAsStringAsync());
+});
+
+app.Run();
+```
+
+#### Brevo
+
+[`brevo_csharp`](https://www.nuget.org/packages/brevo_csharp)
+
+```csharp
+// App host
+api.WithEnvironment("Brevo__BasePath", mail.Resource.GetConnectionProperty("Endpoint"))
+   .WithEnvironment("Brevo__ApiKey", mail.Resource.GetConnectionProperty("ApiKey"));
+```
+
+```csharp
+using brevo_csharp.Api;
+using brevo_csharp.Model;
+using Microsoft.Extensions.Options;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOptions<BrevoSettings>().BindConfiguration("Brevo");
+builder.Services.AddSingleton(services =>
+{
+    var settings = services.GetRequiredService<IOptions<BrevoSettings>>().Value;
+    var config = new brevo_csharp.Client.Configuration { BasePath = settings.BasePath };
+    config.ApiKey["api-key"] = settings.ApiKey;
+    return new TransactionalEmailsApi(config);
+});
+
+var app = builder.Build();
+
+app.MapPost("/welcome", async (string to, TransactionalEmailsApi brevo) =>
+{
+    var result = await brevo.SendTransacEmailAsync(new SendSmtpEmail(
+        sender: new SendSmtpEmailSender(email: "shop@example.com"),
+        to: [new SendSmtpEmailTo(to)],
+        subject: "Welcome",
+        htmlContent: "<p>Hi!</p>"));
+    return Results.Ok(result.MessageId);
+});
+
+app.Run();
+
+sealed class BrevoSettings
+{
+    public string BasePath { get; set; } = "https://api.brevo.com/v3";
+    public string ApiKey { get; set; } = "";
+}
+```
+
+#### Mailchimp Transactional (Mandrill)
+
+[`Mandrill.net`](https://www.nuget.org/packages/Mandrill.net), which uses the `HttpClient`'s base address as the API root.
+
+```csharp
+// App host
+api.WithEnvironment("Mandrill__BaseAddress", mail.Resource.GetConnectionProperty("Endpoint"))
+   .WithEnvironment("Mandrill__ApiKey", mail.Resource.GetConnectionProperty("ApiKey"));
+```
+
+```csharp
+using Mandrill;
+using Mandrill.Model;
+using Microsoft.Extensions.Options;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOptions<MandrillSettings>().BindConfiguration("Mandrill");
+builder.Services.AddSingleton<IMandrillApi>(services =>
+{
+    var settings = services.GetRequiredService<IOptions<MandrillSettings>>().Value;
+    return new MandrillApi(settings.ApiKey, new HttpClient { BaseAddress = settings.BaseAddress });
+});
+
+var app = builder.Build();
+
+app.MapPost("/welcome", async (string to, IMandrillApi mandrill) =>
+{
+    var results = await mandrill.Messages.SendAsync(new MandrillMessage("shop@example.com", to, "Welcome", "<p>Hi!</p>"));
+    return results.All(r => r.Status == MandrillSendMessageResponseStatus.Sent) ? Results.Ok() : Results.Problem(results[0].RejectReason);
+});
+
+app.Run();
+
+sealed class MandrillSettings
+{
+    public Uri BaseAddress { get; set; } = new("https://mandrillapp.com/api/1.0/");
+    public string ApiKey { get; set; } = "";
+}
+```
+
+#### Azure Communication Services
+
+[`Azure.Communication.Email`](https://www.nuget.org/packages/Azure.Communication.Email) with [`Microsoft.Extensions.Azure`](https://www.nuget.org/packages/Microsoft.Extensions.Azure). The ACS SDK is configured with a connection string, and Nevermail's is a regular ACS one, so pass it as it is. Deployed, `builder.AddConnectionString("mail")` holds the one from the Azure portal (`endpoint=https://….communication.azure.com/;accesskey=…`).
+
+```csharp
+// App host
+api.WithReference(mail);   // ConnectionStrings__mail
+```
+
+```csharp
+using Azure;
+using Azure.Communication.Email;
+using Microsoft.Extensions.Azure;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddAzureClients(clients => clients.AddEmailClient(builder.Configuration.GetConnectionString("mail")));
+
+var app = builder.Build();
+
+app.MapPost("/welcome", async (string to, EmailClient email) =>
+{
+    var operation = await email.SendAsync(WaitUntil.Completed, "shop@example.com", to, "Welcome", "<p>Hi!</p>");
+    return Results.Ok(operation.Value.Status.ToString());
+});
+
+app.Run();
+```
+
+Use the connection string, not `DefaultAzureCredential`: the Azure SDK only sends Entra ID tokens over `https`, and Nevermail serves `http`.
+
+#### AhaSend
+
+[API v2](https://ahasend.com/docs) over `HttpClient`, since there's no .NET SDK.
+
+```csharp
+// App host
+api.WithEnvironment("AhaSend__BaseAddress", mail.Resource.GetConnectionProperty("Endpoint"))
+   .WithEnvironment("AhaSend__ApiKey", mail.Resource.GetConnectionProperty("ApiKey"))
+   .WithEnvironment("AhaSend__AccountId", mail.Resource.GetConnectionProperty("AccountId"));
+```
+
+```csharp
+using Microsoft.Extensions.Options;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOptions<AhaSendSettings>().BindConfiguration("AhaSend");
+builder.Services.AddHttpClient("ahasend", (services, client) =>
+{
+    var settings = services.GetRequiredService<IOptions<AhaSendSettings>>().Value;
+    client.BaseAddress = settings.BaseAddress;
+    client.DefaultRequestHeaders.Authorization = new("Bearer", settings.ApiKey);
+});
+
+var app = builder.Build();
+
+app.MapPost("/welcome", async (string to, IHttpClientFactory httpClients, IOptions<AhaSendSettings> settings) =>
+{
+    var response = await httpClients.CreateClient("ahasend").PostAsJsonAsync($"v2/accounts/{settings.Value.AccountId}/messages", new
+    {
+        from = new { email = "shop@example.com" },
+        recipients = new[] { new { email = to } },
+        subject = "Welcome",
+        html_content = "<p>Hi!</p>",
+    });
+    return response.IsSuccessStatusCode ? Results.Ok() : Results.Problem(await response.Content.ReadAsStringAsync());
+});
+
+app.Run();
+
+sealed class AhaSendSettings
+{
+    public Uri BaseAddress { get; set; } = new("https://api.ahasend.com");
+    public string ApiKey { get; set; } = "";
+    public Guid AccountId { get; set; }
+}
+```
+
+#### SMTP
+
+[`MailKit`](https://www.nuget.org/packages/MailKit)
+
+```csharp
+// App host
+api.WithEnvironment("Smtp__Host", mail.Resource.GetConnectionProperty("Host"))
+   .WithEnvironment("Smtp__Port", mail.Resource.GetConnectionProperty("Port"));
+```
+
+```csharp
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using Microsoft.Extensions.Options;
+using MimeKit;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOptions<SmtpSettings>().BindConfiguration("Smtp");
+
+var app = builder.Build();
+
+app.MapPost("/welcome", async (string to, IOptions<SmtpSettings> options) =>
+{
+    var settings = options.Value;
+    var message = new MimeMessage();
+    message.From.Add(MailboxAddress.Parse("shop@example.com"));
+    message.To.Add(MailboxAddress.Parse(to));
+    message.Subject = "Welcome";
+    message.Body = new TextPart("html") { Text = "<p>Hi!</p>" };
+
+    using var smtp = new SmtpClient();
+    // Auto: plain against Nevermail, which offers no STARTTLS, and TLS against a real server that does
+    await smtp.ConnectAsync(settings.Host, settings.Port, SecureSocketOptions.Auto);
+    if (settings.Username is not null)
+    {
+        await smtp.AuthenticateAsync(settings.Username, settings.Password);
+    }
+    await smtp.SendAsync(message);
+    await smtp.DisconnectAsync(true);
+    return Results.Ok();
+});
+
+app.Run();
+
+sealed class SmtpSettings
+{
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 587;
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+}
+```
+
+With `WithSmtpCredentials(...)`, also pass `Smtp__Username` and `Smtp__Password` from the `Username` and `Password` properties. With `System.Net.Mail.SmtpClient`, use the same host and port with `EnableSsl = false` locally.
+
+#### One instance for several providers
+
+Without a provider, `AddNevermail("mail")` has the properties `Endpoint` (base address of all HTTP APIs), `SmtpHost`, `SmtpPort` and `AccessKey`, and the connection string `Endpoint=…;SmtpHost=…;SmtpPort=…;AccessKey=…`, which is also a valid ACS one. Add the provider paths yourself:
+
+```csharp
 var mail = builder.AddNevermail("mail");
 
 builder.AddProject<Projects.Api>("api")
-    .WithReference(mail)   // ConnectionStrings__mail = Endpoint=...;SmtpHost=...;SmtpPort=...;AccessKey=...
+    .WithEnvironment("SendGrid__Host", mail.Resource.HttpEndpoint)
+    .WithEnvironment("Brevo__BasePath", ReferenceExpression.Create($"{mail.Resource.HttpEndpoint}/v3"))
+    .WithEnvironment("Smtp__Host", mail.Resource.SmtpEndpoint.Property(EndpointProperty.Host))
+    .WithEnvironment("Smtp__Port", mail.Resource.SmtpEndpoint.Property(EndpointProperty.Port))
     .WaitFor(mail);
 ```
 
-```csharp
-// Api project
-var connectionString = builder.Configuration.GetConnectionString("mail")!;
-var endpoint = (string)new DbConnectionStringBuilder { ConnectionString = connectionString }["Endpoint"];
-
-builder.Services.AddSendGrid(o => { o.ApiKey = "dev"; o.Host = endpoint; });       // SendGrid
-builder.Services.AddAzureClients(c => c.AddEmailClient(connectionString));          // Azure Communication Services
-```
-
-The dashboard links to the inbox. The [package README](Nevermail.Aspire.Hosting/README.md) has samples for every provider, options like `WithDataVolume()` and `WithFaults(...)`, using Nevermail locally and the real provider when deployed, and integration tests with `Aspire.Hosting.Testing`. The package works with any Aspire 13.x.
+The dashboard links to the inbox. The [package README](Nevermail.Aspire.Hosting/README.md) has options like `WithDataVolume()` and `WithFaults(...)`, and integration tests with `Aspire.Hosting.Testing`. The package works with any Aspire 13.x.
 
 ### Persistence
 
@@ -136,6 +425,19 @@ docker run -d -p 5110:8080 -p 1025:1025   -e Storage__Path=/app/data   -v neverm
 - Requests must be signed with an access key (`HMAC-SHA256`) or carry a bearer token, but signatures aren't verified, so any base64 access key works. Microsoft Entra ID credentials (`DefaultAzureCredential`, managed identity) can't be used locally: the Azure SDK refuses bearer tokens over plain `http`. Use a connection string in development.
 - Azure's SMTP relay (`smtp.azurecomm.net`) needs STARTTLS, which Nevermail doesn't support. Point SMTP clients at Nevermail's SMTP server without TLS instead.
 
+### AhaSend
+
+`POST /v2/accounts/{account_id}/messages` (API v2). Any account UUID works.
+
+- Errors look like AhaSend's: `{"message":"..."}`, first error only. AhaSend's own wording isn't stable, so neither is Nevermail's.
+- Checks the documented limits: 1 to 100 recipients, `text_content` or `html_content`, header names, `reply_to` vs. a `reply-to` header, attachment fields, `sandbox_result`, `retention` and the `schedule` windows (first attempt within 7 days, expiry within 8).
+- Every recipient gets their own mail, like on AhaSend. `{{ name }}`, `{{ order.id }}` and `{{ name|safe }}` are filled in from the global `substitutions`, overridden by the recipient's own. Values are HTML-escaped in `html_content` unless marked `|safe`. Other Jinja filters, tags and loops aren't rendered.
+- Attachments with a `content_id` in angle brackets (`<logo>`) are inline images. Plain-text attachments (`"base64": false`) are stored as-is.
+- `sandbox: true` mails are captured and flagged as sandbox; `sandbox_result` is recorded but doesn't change the response.
+- Returns `202` with one `message` per recipient (`queued`, or `scheduled` for a future `schedule.first_attempt`). Each message ID contains the captured mail's ID: `<mailId@nevermail.local>`.
+- `Idempotency-Key` works like on AhaSend: a repeated request replays the stored response with `Idempotent-Replayed: true` and doesn't send again. A key reused with a different body gets `422`, and `5xx` outcomes aren't stored. Keys are kept in memory for 24 hours.
+- API v1 (`/v1/email/send`), conversation messages (CC/BCC) and stored templates aren't supported. AhaSend's SMTP relay needs STARTTLS; use Nevermail's SMTP server without TLS instead.
+
 ### SMTP
 
 Port `1025`. Supports `SIZE`, `8BITMIME`, `SMTPUTF8`, `PIPELINING` and `AUTH PLAIN`/`LOGIN`. STARTTLS isn't supported.
@@ -152,7 +454,8 @@ Port `1025`. Supports `SIZE`, `8BITMIME`, `SMTPUTF8`, `PIPELINING` and `AUTH PLA
 | `Providers__SendGrid__ApiKey` | If set, requests must use this key. If unset, any key is accepted, but a missing `Authorization` header is always rejected, like SendGrid does. | unset |
 | `Providers__Brevo__ApiKey` | Same for Brevo's `api-key` header. | unset |
 | `Providers__Mandrill__ApiKey` | Same for Mandrill's `key` body field. | unset |
-| `Providers__<Name>__Enabled` | Set to `false` to disable a provider's endpoints (`SendGrid`, `Brevo`, `Mandrill`, `Azure`). | `true` |
+| `Providers__AhaSend__ApiKey` | Same for AhaSend's `Authorization: Bearer` header. | unset |
+| `Providers__<Name>__Enabled` | Set to `false` to disable a provider's endpoints (`SendGrid`, `Brevo`, `Mandrill`, `Azure`, `AhaSend`). | `true` |
 | `Smtp__Enabled` | Set to `false` to disable the SMTP server. | `true` |
 | `Smtp__Port` | SMTP port inside the container. | `1025` |
 | `Smtp__Username`, `Smtp__Password` | If set, clients must authenticate with these credentials before sending. | unset |
@@ -170,7 +473,7 @@ Useful for asserting on sent mails in integration tests.
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider` (`sendgrid`, `brevo`, `mandrill`, `azure`, `smtp`), `requestId` (e.g. SendGrid's `X-Message-Id`), `limit`. Add `wait=<seconds>` (max 60) to block until at least `count` (default 1) mails match |
+| `GET /api/mails` | Mail summaries, newest first. Query: `search`, `to`, `provider` (`sendgrid`, `brevo`, `mandrill`, `azure`, `ahasend`, `smtp`), `requestId` (e.g. SendGrid's `X-Message-Id`), `limit`. Add `wait=<seconds>` (max 60) to block until at least `count` (default 1) mails match |
 | `GET /api/mails/{id}` | Full mail including headers, attachments and the raw request |
 | `GET /api/mails/{id}/attachments/{index}` | Download an attachment |
 | `GET /api/mails/{id}/eml` | The mail as an `.eml` file (SMTP mails exactly as received) |

@@ -2,29 +2,26 @@
 
 *Your emails, never delivered.*
 
-Nevermail is a tiny local stand-in for transactional email services. Point your app at it instead of the real provider, and every mail it "sends" ends up in a web UI where you can inspect it. Nothing ever leaves your machine. It's built for local dev and integration tests, e.g. as a container in a .NET Aspire app host.
+**A fake email provider for local development and tests.** Point your app at Nevermail instead of SendGrid, Brevo, Mailchimp Transactional, Azure Communication Services or an SMTP server. Your code sends mail exactly as it would in production; Nevermail accepts it, shows it in a web inbox, and never delivers anything.
 
-It speaks the HTTP APIs of **SendGrid**, **Brevo** (formerly Sendinblue), **Mailchimp Transactional** (Mandrill) and **Azure Communication Services Email**, and plain **SMTP**. The image is a NativeAOT binary on `scratch`, about 16 MB, for `linux/amd64` and `linux/arm64`.
-
-> Formerly **SendGrid Mock** (`mdi1984/sendgrid-mock`). That image is frozen; use `mdi1984/nevermail`.
-
-## Features
-
-- **Realistic APIs**: each provider validates requests the way the real service does and answers with its own response and error format. A request that would fail in production fails here too.
-- **Delivery semantics**: SendGrid personalizations, Brevo message versions, and Mandrill's per-recipient sending each turn into the individual mails the provider would deliver, with merge tags filled in for the simple cases. Azure's long-running send operations can be polled like the real thing.
-- **SMTP server** like Mailpit: any client, AUTH PLAIN/LOGIN, MIME parsing including attachments, inline images and legacy charsets.
-- **Web UI** with live updates, search and provider filters. Each mail shows its HTML preview (desktop/tablet/mobile widths), plain text, HTML source, headers, metadata and template data, and the raw request, plus attachments, inline (`cid:`) images and `.eml` download. Light and dark themes, keyboard navigation (`j`/`k`, `/`, `Del`), and it works on phones. Self-contained: no CDNs, works offline.
-- **Inspection API** for your own tests, including waiting for a mail instead of sleeping (see below)
-- **Fault injection**: make sends fail with rate limits, outages or bounces, to test your error handling and retries
-- **Persistence**: in memory, or one JSON file per mail so mails survive restarts
-
-## Getting started
+![Nevermail inbox showing captured mails from SendGrid, Azure, SMTP, Mandrill and Brevo](docs/screenshot.png)
 
 ```bash
 docker run -d -p 5110:8080 -p 1025:1025 mdi1984/nevermail
 ```
 
-The UI is at [http://localhost:5110](http://localhost:5110). Then point your app at Nevermail:
+Open [http://localhost:5110](http://localhost:5110) and send your first mail.
+
+- **Drop-in APIs** for SendGrid, Brevo, Mailchimp Transactional (Mandrill), Azure Communication Services Email, and SMTP. Requests are validated like the real service, so what fails in production fails here too.
+- **Web inbox** with live updates, search, HTML preview at desktop/tablet/mobile widths, headers, attachments and `.eml` download.
+- **Built for tests**: an [inspection API](#inspection-api) that waits for a mail instead of sleeping, and [fault injection](#fault-injection) for rate limits, outages and bounces.
+- **Tiny**: a ~16 MB NativeAOT image for `linux/amd64` and `linux/arm64`, with a [.NET Aspire integration](#net-aspire).
+
+> Formerly **SendGrid Mock** (`mdi1984/sendgrid-mock`). That image is frozen; use `mdi1984/nevermail`.
+
+## Connecting your app
+
+Point your existing client at Nevermail. Any API key works unless you [configure one](#configuration).
 
 | Provider | Point the client at | Auth |
 |---|---|---|
@@ -219,13 +216,13 @@ dotnet test Nevermail.slnx
 
 Releases are cut by pushing a `vX.Y.Z` tag. CI then publishes the multi-arch image (`mdi1984/nevermail:vX.Y.Z`) and, once the image exists, `Nevermail.Aspire.Hosting` `X.Y.Z` with that image tag as its default. NuGet publishing uses [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing), so no API key is stored. It needs a policy on nuget.org for this repository and `docker-publish.yml`, plus the nuget.org profile name in the `NUGET_USER` secret.
 
-## License
-
-[MIT](LICENSE)
-
 Reflection is disabled in the AOT build, so every serialized type must be registered in a source-generated `JsonSerializerContext`. Unit tests run on the JIT and can't catch a missing registration, so CI also runs `scripts/smoke-test.sh` against the built image:
 
 ```bash
 docker build -t nevermail:dev .
 sh scripts/smoke-test.sh nevermail:dev
 ```
+
+## License
+
+[MIT](LICENSE)

@@ -5,11 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Fails restore when the package's Aspire.Hosting range no longer allows the version tested here. -->
+    <WarningsAsErrors>$(WarningsAsErrors);NU1608</WarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The package builds against the oldest supported Aspire (13.0); test against the newest 13.x. -->
-    <PackageReference Include="Aspire.Hosting" Version="13.*" />
+    <!-- The package builds against the oldest supported Aspire (17.0); test against the newest 17.x. -->
+    <PackageReference Include="Aspire.Hosting" Version="17.*" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageReference Include="xunit" Version="2.9.3" />

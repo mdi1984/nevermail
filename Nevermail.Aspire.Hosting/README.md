@@ -2,7 +2,7 @@
 
 [.NET Aspire](https://aspire.dev) hosting integration for [Nevermail](https://github.com/mdi1984/nevermail): a local mock for **SendGrid**, **Brevo**, **Mailchimp Transactional (Mandrill)**, **Azure Communication Services Email**, **AhaSend** and **SMTP**. Every mail your app sends ends up in a web UI, and nothing leaves your machine.
 
-Works with any Aspire 13.x.
+Works with Aspire 17.x, so the app host must target .NET 10. For Aspire 13.x, use version 2.x of this package.
 
 ```bash
 dotnet add package Nevermail.Aspire.Hosting

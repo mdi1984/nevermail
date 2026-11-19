@@ -374,7 +374,7 @@ builder.AddProject<Projects.Api>("api")
     .WaitFor(mail);
 ```
 
-The dashboard links to the inbox. The [package README](Nevermail.Aspire.Hosting/README.md) has options like `WithDataVolume()` and `WithFaults(...)`, and integration tests with `Aspire.Hosting.Testing`. The package works with any Aspire 13.x.
+The dashboard links to the inbox. The [package README](Nevermail.Aspire.Hosting/README.md) has options like `WithDataVolume()` and `WithFaults(...)`, and integration tests with `Aspire.Hosting.Testing`. The package works with Aspire 17.x (app host on .NET 10). For Aspire 13.x, use package version 2.x.
 
 ### Persistence
 

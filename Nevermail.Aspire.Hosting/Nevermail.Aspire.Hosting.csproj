@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -20,9 +20,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Any Aspire 13.x. Builds against the lowest version in the range, so only APIs every 13.x has are used;
-         app hosts on newer 13.x versions keep their own version. -->
-    <PackageReference Include="Aspire.Hosting" Version="[13.0.0, 14.0.0)" />
+    <!-- Any Aspire 17.x. Builds against the lowest version in the range, so only APIs every 17.x has are used;
+         app hosts on newer 17.x versions keep their own version. Aspire 17 targets net10.0 only. -->
+    <PackageReference Include="Aspire.Hosting" Version="[17.0.0, 18.0.0)" />
   </ItemGroup>
 
   <ItemGroup>
